@@ -185,6 +185,28 @@ git-push:
 git-status:
 	@git status
 
+# ---------------------------------------------------------------------
+# 📋 Issue Management
+# ---------------------------------------------------------------------
+
+issues-sync:
+	@echo "[INFO] Syncing GitHub issues..."
+	gh issue list --json number,title,state,labels,assignees --limit 100 > data/github_issues.json
+	@echo "[INFO] Issues synced to data/github_issues.json"
+
+issues-list:
+	@echo "[INFO] Listing open issues..."
+	gh issue list --label milestone-1-bootstrap
+
+issues-list-all:
+	@echo "[INFO] Listing all issues..."
+	gh issue list --state all
+
+issue-create:
+	@if ("$(TITLE)" -eq "") { echo "[ERROR] Must pass TITLE='issue title' LABELS='label1,label2'"; exit 1 }
+	@echo "[INFO] Creating issue: $(TITLE)"
+	gh issue create --title "$(TITLE)" --label "$(LABELS)"
+
 clean:
 	@echo "[INFO] Cleaning Python caches..."
 	Get-ChildItem -Path . -Include __pycache__,*.pyc,.pytest_cache,.mypy_cache -Recurse -Force | Remove-Item -Force -Recurse

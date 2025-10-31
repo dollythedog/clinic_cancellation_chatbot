@@ -12,7 +12,7 @@ pydantic-settings==2.1.0
 
 # Database
 sqlalchemy==2.0.23
-psycopg2-binary==2.9.9
+psycopg[binary]==3.1.13
 alembic==1.12.1
 
 # Twilio SMS

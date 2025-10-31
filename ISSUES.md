@@ -2,7 +2,7 @@
 
 **Project:** Clinic Cancellation Chatbot  
 **Last Updated:** 2025-10-31  
-**GitHub Project:** [Clinic Chatbot MVP](https://github.com/dollythedog/clinic_cancellation_chatbot/projects)
+**GitHub Project:** [Clinic Chatbot MVP](https://github.com/users/dollythedog/projects/1)
 
 ---
 

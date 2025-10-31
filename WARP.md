@@ -1,4 +1,6 @@
-# WARP.md - Project Rules for AI Assistant
+# WARP.md
+
+This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
 **Project:** Clinic Cancellation Chatbot  
 **Owner:** Jonathan Ives (@dollythedog)  
@@ -9,6 +11,135 @@
 ## Project Context
 
 This project is an **SMS-based chatbot** for Texas Pulmonary & Critical Care Consultants (TPCCC) that automatically fills last-minute appointment cancellations by messaging patients from a managed waitlist. The system prioritizes patients intelligently and handles responses in real-time.
+
+---
+
+## 🚀 Common Commands
+
+**Note:** This project uses a Makefile for common workflows. Run `make help` to see all available commands.
+
+### Development Setup
+```powershell
+# Create virtual environment and install dependencies
+make install
+
+# Or manually:
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+### Running the Application
+```powershell
+# Start FastAPI backend (development mode with reload)
+make run-api
+
+# Start Streamlit dashboard (separate terminal)
+make run-dashboard
+```
+
+### Testing
+```powershell
+# Run all tests
+make test
+
+# Run with coverage report
+make test-cov
+
+# Run specific test file (manual)
+pytest tests/test_orchestrator.py -v
+
+# Run specific test function (manual)
+pytest tests/test_prioritizer.py::test_priority_score_calculation -v
+```
+
+### Code Quality
+```powershell
+# Format code with black and isort
+make format
+
+# Lint with flake8
+make lint
+
+# Type checking with mypy
+make typecheck
+
+# Run all quality checks
+make quality
+```
+
+### Database Management
+```powershell
+# Initialize database (when implemented)
+make db-init
+
+# Create new migration
+make db-migrate MSG="Description of changes"
+
+# Apply migrations
+make db-upgrade
+
+# Rollback one migration
+make db-downgrade
+```
+
+### Git Workflow
+```powershell
+# Check status
+make git-status
+
+# Pull latest changes
+make git-pull
+
+# Add, commit, and push all changes
+make git-push MSG="Your commit message"
+```
+
+---
+
+## 🏗️ Architecture Overview
+
+### System Flow
+The system operates on an **event-driven batch messaging model**:
+
+1. **Cancellation occurs** → Logged manually or via future EHR integration
+2. **Orchestrator activates** → Queries waitlist and calculates priority scores
+3. **Batch SMS sent** → Top N patients (default 3) receive simultaneous offers with hold timer (default 7 min)
+4. **Race-safe confirmation** → First "YES" wins via SELECT FOR UPDATE locking
+5. **Others notified** → Remaining patients told slot is taken
+6. **Next batch** → If no response, send to next priority group after hold expires
+
+### Key Components
+
+**Core Logic** (`app/core/`):
+- **orchestrator.py** - Main coordinator; manages batch sending, hold timers, and state transitions
+- **prioritizer.py** - Implements scoring algorithm (urgent flag + manual boost + appointment proximity + seniority)
+- **scheduler.py** - APScheduler background jobs for timer expiration and cleanup
+- **templates.py** - SMS message templates with time zone formatting
+
+**Infrastructure** (`app/infra/`):
+- **models.py** - SQLAlchemy ORM models (6 core tables: patient_contact, provider_reference, waitlist_entry, cancellation_event, offer, message_log)
+- **db.py** - Database connection pooling and session management
+- **twilio_client.py** - Wrapper for Twilio API with signature verification and delivery tracking
+- **settings.py** - Pydantic settings loaded from environment variables
+
+**API Endpoints** (`app/api/`):
+- **cancellations.py** - POST /admin/cancel (manual cancellation entry)
+- **sms_webhook.py** - POST /sms/inbound (handles YES/NO responses)
+- **status_webhook.py** - POST /twilio/status (delivery receipt callbacks)
+- **waitlist_api.py** - CRUD operations for waitlist management
+
+**Utilities** (`utils/`):
+- **time_utils.py** - **CRITICAL**: All timezone conversions (UTC storage ↔ Central Time display)
+- Other shared utilities for config, logging, database helpers
+
+### Database Schema Summary
+See PROJECT_PLAN.md for full schema. Key relationships:
+- `patient_contact` ← `waitlist_entry` (one-to-many)
+- `cancellation_event` ← `offer` (one-to-many)
+- `offer` → `message_log` (one-to-many)
+- All tables use PostgreSQL ENUM types for state management
+- **All datetime fields are TIMESTAMP WITH TIME ZONE stored in UTC**
 
 ---
 
@@ -231,18 +362,6 @@ This project is an **SMS-based chatbot** for Texas Pulmonary & Critical Care Con
 - Document major dependencies in README
 - Test after upgrading dependencies
 - Use virtual environment for isolation
-
-### Make Commands (Future)
-Consider adding Makefile for common tasks:
-```makefile
-make venv          # Create virtual environment
-make install       # Install dependencies
-make db-init       # Initialize database
-make test          # Run test suite
-make lint          # Run code linters
-make run-api       # Start FastAPI
-make run-dashboard # Start Streamlit
-```
 
 ---
 

@@ -179,7 +179,7 @@ git-push:
 	@echo "[INFO] Committing with message: $(MSG)"
 	git commit -m "$(MSG)"
 	@echo "[INFO] Pushing to GitHub..."
-	git push
+	git push origin main
 	@echo "[INFO] Push complete"
 
 git-status:

@@ -52,9 +52,17 @@ SLACK_WEBHOOK_URL=https://ntfy.sh/clinic-chatbot-jives-test-123
 When the mock Twilio client "sends" an SMS, it will:
 - ✅ Log to console
 - ✅ Save to database (message_log table)
-- ✅ Send notification to ntfy.sh (if configured)
+- ✅ **Send notification to ntfy.sh** (push notification to your phone!)
 
-You'll get push notifications on your phone for each "SMS" sent!
+You'll get **real push notifications on your phone** for each "SMS" sent! 
+
+**Notification Format:**
+```
+Title: TPCCC Mock SMS
+Message: 📱 Mock SMS to +12145551001
+
+TPCCC: An earlier appointment opened tomorrow at 10:00 AM...
+```
 
 ---
 

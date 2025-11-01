@@ -9,6 +9,7 @@ Author: Jonathan Ives (@dollythedog)
 
 import logging
 from typing import Optional
+import requests
 
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
@@ -78,8 +79,13 @@ class TwilioClient:
             >>> print(f"Message sent: {sid}")
         """
         if self.use_mock:
-            # Mock mode - just log and return fake SID
+            # Mock mode - log and optionally send to ntfy.sh
             logger.info(f"[MOCK] SMS to {to}: {body}")
+            
+            # Send notification to webhook (e.g., ntfy.sh) if configured
+            if hasattr(settings, 'SLACK_WEBHOOK_URL') and settings.SLACK_WEBHOOK_URL:
+                self._send_mock_notification(to, body)
+            
             return f"SM{to[-10:]}_mock"
         
         if not settings.ENABLE_SMS_SENDING:
@@ -227,6 +233,44 @@ class TwilioClient:
             return phone
         
         raise ValueError(f"Cannot format phone number to E.164: {phone}")
+    
+    def _send_mock_notification(self, to: str, body: str) -> None:
+        """
+        Send mock SMS notification to webhook (e.g., ntfy.sh).
+        
+        Args:
+            to: Recipient phone number
+            body: Message body
+        """
+        try:
+            webhook_url = settings.SLACK_WEBHOOK_URL
+            
+            # Format notification message
+            notification = f"📱 Mock SMS to {to}\n\n{body}"
+            
+            # Send to ntfy.sh (simple POST with message as body)
+            response = requests.post(
+                webhook_url,
+                data=notification.encode('utf-8'),
+                headers={
+                    "Title": "TPCCC Mock SMS",
+                    "Priority": "default",
+                    "Tags": "speech_balloon"
+                },
+                timeout=5
+            )
+            
+            if response.status_code == 200:
+                logger.debug(f"Sent mock SMS notification to {webhook_url}")
+            else:
+                logger.warning(
+                    f"Failed to send notification: {response.status_code} {response.text}"
+                )
+                
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Could not send mock notification: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error sending mock notification: {e}")
 
 
 # Global Twilio client instance

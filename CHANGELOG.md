@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generates 3 providers, 5 patients, 2 cancellations with offers
 - Includes sample message log entries
 
+**Testing Features:**
+- ✅ ntfy.sh integration for mock SMS notifications
+- ✅ Mock Twilio client sends push notifications to phone
+- ✅ Real-time testing without SMS costs
+- ✅ Perfect for development and QA workflows
+
 ### Fixed
 - SQLAlchemy enum handling (added values_callable for Windows compatibility)
 - Windows date formatting issues (removed %-I format specifier)

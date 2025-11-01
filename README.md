@@ -259,7 +259,7 @@ The Streamlit dashboard provides real-time visibility into:
 * **Message Log** - SMS audit trail with filtering
 * **Admin Controls** - Manual boost, add/remove patients
 
-**Access:** `http://localhost:8502`
+**Access:** `http://localhost:8501`
 
 **Features:**
 - Real-time metrics in sidebar (cancellations, waitlist size, pending offers)
@@ -389,8 +389,11 @@ For technical support or questions:
 **Completed:** 18/25 issues (72%)
 
 **Latest Session (2025-11-01):**
-- Fixed SQLAlchemy enum handling for Windows
-- Fixed Windows date formatting issues
-- Fixed dashboard infinite rerun loop  
-- Created seed_sample_data.py for easy testing
-- Dashboard now fully functional with sample data
+- ✅ Fixed SQLAlchemy enum handling for Windows
+- ✅ Fixed Windows date formatting issues
+- ✅ Fixed dashboard infinite rerun loop  
+- ✅ Created seed_sample_data.py for easy testing
+- ✅ Dashboard now fully functional with sample data
+- ✅ **Added ntfy.sh integration for mock SMS testing**
+- ✅ Mock Twilio client now sends push notifications to phone
+- ✅ Perfect for testing without real SMS costs

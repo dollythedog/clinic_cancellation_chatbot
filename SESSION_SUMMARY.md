@@ -6,11 +6,11 @@
 
 ---
 
-# Session 3: Critical Fixes & Completion
+# Session 3: Critical Fixes & ntfy.sh Integration
 
-**Date:** November 1, 2025 (Afternoon)  
-**Session Duration:** ~2 hours  
-**Focus:** Bug fixes and production readiness
+**Date:** November 1, 2025 (Afternoon/Evening)  
+**Session Duration:** ~3 hours  
+**Focus:** Bug fixes, production readiness, and mock testing with push notifications
 
 ## 🐛 Critical Bugs Fixed
 
@@ -47,7 +47,7 @@
 
 ## ✨ New Features
 
-### Sample Data Generator
+### 1. Sample Data Generator
 **Created:** `scripts/seed_sample_data.py` (337 lines)
 
 **Generates:**
@@ -58,6 +58,34 @@
 - Message log entries
 
 **Usage:** `python scripts/seed_sample_data.py`
+
+### 2. ntfy.sh Push Notification Integration 📱
+**Problem:** Testing SMS workflow required either real Twilio costs or blind faith in logs
+
+**Solution:** Integrated ntfy.sh for real-time push notifications during mock testing
+
+**Implementation:**
+- Modified `app/infra/twilio_client.py` to add `_send_mock_notification()` method
+- Sends HTTP POST to ntfy.sh webhook when mock SMS is "sent"
+- Uses `SLACK_WEBHOOK_URL` environment variable for configuration
+- Includes rich notification metadata (title, priority, tags)
+
+**Benefits:**
+- ✅ Get push notifications on phone for each mock SMS
+- ✅ Perfect for development and testing workflows
+- ✅ Zero SMS costs during development
+- ✅ Real-time feedback without checking logs
+- ✅ No signup required (just subscribe to a topic)
+
+**Configuration:**
+```bash
+# .env file
+SLACK_WEBHOOK_URL=https://ntfy.sh/clinic-chatbot-jives-123
+```
+
+**Files Modified:**
+- `app/infra/twilio_client.py` - Added notification method and requests import
+- `.env` - Added correct ntfy.sh topic URL
 
 ## 📚 Documentation Updated
 

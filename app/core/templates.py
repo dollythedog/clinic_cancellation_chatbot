@@ -18,6 +18,7 @@ from utils.time_utils import format_for_sms
 def format_initial_offer(
     slot_time: datetime,
     location: str,
+    provider_name: str,
     hold_minutes: int = 7
 ) -> str:
     """
@@ -26,6 +27,7 @@ def format_initial_offer(
     Args:
         slot_time: Appointment slot start time (UTC aware)
         location: Clinic location name
+        provider_name: Provider name (e.g., "Dr. McDonald", "NP Rogers")
         hold_minutes: Minutes until offer expires
         
     Returns:
@@ -34,21 +36,22 @@ def format_initial_offer(
     Example:
         >>> from datetime import datetime, timezone
         >>> slot = datetime(2025, 11, 1, 19, 0, tzinfo=timezone.utc)  # 2pm CT
-        >>> msg = format_initial_offer(slot, "Main Clinic", 7)
+        >>> msg = format_initial_offer(slot, "Main Clinic", "Dr. McDonald", 7)
         >>> print(msg)
-        TPCCC: An earlier appointment opened Nov 1 at 2:00 PM CT at Main Clinic. Reply YES to claim or NO to skip. This offer expires in 7 min.
+        Texas Pulmonary: An earlier appointment opened Nov 1 at 2:00 PM CT with Dr. McDonald at Main Clinic. Reply YES to claim or NO to skip. Expires in 7 min.
     """
     time_str = format_for_sms(slot_time, include_date=True)
     
     return (
-        f"TPCCC: An earlier appointment opened {time_str} at {location}. "
-        f"Reply YES to claim or NO to skip. This offer expires in {hold_minutes} min."
+        f"Texas Pulmonary: An earlier appointment opened {time_str} with {provider_name} at {location}. "
+        f"Reply YES to claim or NO to skip. Expires in {hold_minutes} min."
     )
 
 
 def format_acceptance_winner(
     slot_time: datetime,
-    location: str
+    location: str,
+    provider_name: str
 ) -> str:
     """
     Format confirmation message for patient who successfully claimed slot.
@@ -56,21 +59,22 @@ def format_acceptance_winner(
     Args:
         slot_time: Appointment slot start time (UTC aware)
         location: Clinic location name
+        provider_name: Provider name (e.g., "Dr. McDonald", "NP Rogers")
         
     Returns:
         str: Formatted SMS message
         
     Example:
         >>> slot = datetime(2025, 11, 1, 19, 0, tzinfo=timezone.utc)
-        >>> msg = format_acceptance_winner(slot, "Main Clinic")
+        >>> msg = format_acceptance_winner(slot, "Main Clinic", "Dr. McDonald")
         >>> print(msg)
-        TPCCC: Confirmed. You're scheduled Nov 1 at 2:00 PM CT at Main Clinic. Reply STOP to opt out of future messages.
+        Texas Pulmonary: Confirmed! You're scheduled Nov 1 at 2:00 PM CT with Dr. McDonald at Main Clinic. Reply STOP to opt out.
     """
     time_str = format_for_sms(slot_time, include_date=True)
     
     return (
-        f"TPCCC: Confirmed. You're scheduled {time_str} at {location}. "
-        f"Reply STOP to opt out of future messages."
+        f"Texas Pulmonary: Confirmed! You're scheduled {time_str} with {provider_name} at {location}. "
+        f"Reply STOP to opt out."
     )
 
 
@@ -84,10 +88,10 @@ def format_acceptance_too_late() -> str:
     Example:
         >>> msg = format_acceptance_too_late()
         >>> print(msg)
-        TPCCC: Thanks—this slot has been taken. We'll keep you on the list for the next opening.
+        Texas Pulmonary: Thanks—this slot has been taken. We'll keep you on the list for the next opening.
     """
     return (
-        "TPCCC: Thanks—this slot has been taken. "
+        "Texas Pulmonary: Thanks—this slot has been taken. "
         "We'll keep you on the list for the next opening."
     )
 
@@ -102,9 +106,9 @@ def format_decline_response() -> str:
     Example:
         >>> msg = format_decline_response()
         >>> print(msg)
-        TPCCC: No problem—we'll keep you on the list for future openings.
+        Texas Pulmonary: No problem—we'll keep you on the list for future openings.
     """
-    return "TPCCC: No problem—we'll keep you on the list for future openings."
+    return "Texas Pulmonary: No problem—we'll keep you on the list for future openings."
 
 
 def format_help_response() -> str:
@@ -117,9 +121,9 @@ def format_help_response() -> str:
     Example:
         >>> msg = format_help_response()
         >>> print(msg)
-        HELP: TPCCC scheduling. Reply YES to claim slots; NO to skip.
+        Texas Pulmonary & Critical Care scheduling. Reply YES to claim earlier appointment slots or NO to skip. Reply STOP to opt out.
     """
-    return "HELP: TPCCC scheduling. Reply YES to claim slots; NO to skip."
+    return "Texas Pulmonary & Critical Care scheduling. Reply YES to claim earlier appointment slots or NO to skip. Reply STOP to opt out."
 
 
 def format_stop_response() -> str:
@@ -132,9 +136,9 @@ def format_stop_response() -> str:
     Example:
         >>> msg = format_stop_response()
         >>> print(msg)
-        You'll no longer receive earlier-slot messages from TPCCC.
+        You've been removed from the Texas Pulmonary waitlist. You will no longer receive appointment notifications.
     """
-    return "You'll no longer receive earlier-slot messages from TPCCC."
+    return "You've been removed from the Texas Pulmonary waitlist. You will no longer receive appointment notifications."
 
 
 def format_cancellation_notification(offer_id: int) -> str:
@@ -150,10 +154,10 @@ def format_cancellation_notification(offer_id: int) -> str:
     Example:
         >>> msg = format_cancellation_notification(123)
         >>> print(msg)
-        TPCCC: The slot you were offered has been filled. We'll notify you of the next opening.
+        Texas Pulmonary: The slot you were offered has been filled. We'll notify you of the next opening.
     """
     return (
-        "TPCCC: The slot you were offered has been filled. "
+        "Texas Pulmonary: The slot you were offered has been filled. "
         "We'll notify you of the next opening."
     )
 
@@ -168,11 +172,46 @@ def format_error_response() -> str:
     Example:
         >>> msg = format_error_response()
         >>> print(msg)
-        TPCCC: Please reply YES or NO to appointment offers. Reply HELP for info or STOP to opt out.
+        Texas Pulmonary: Please reply YES or NO to appointment offers. Reply HELP for info or STOP to opt out.
     """
     return (
-        "TPCCC: Please reply YES or NO to appointment offers. "
+        "Texas Pulmonary: Please reply YES or NO to appointment offers. "
         "Reply HELP for info or STOP to opt out."
+    )
+
+
+def format_welcome_message(
+    patient_name: Optional[str] = None,
+    current_appt_date: Optional[datetime] = None
+) -> str:
+    """
+    Format welcome message when patient is added to waitlist.
+    
+    Args:
+        patient_name: Patient's name (optional, for personalization)
+        current_appt_date: Their current appointment date (optional)
+        
+    Returns:
+        str: Formatted SMS message
+        
+    Example:
+        >>> from datetime import datetime, timezone
+        >>> appt = datetime(2025, 12, 15, 14, 0, tzinfo=timezone.utc)
+        >>> msg = format_welcome_message("Jane", appt)
+        >>> print(msg)
+        Texas Pulmonary & Critical Care: Hi Jane, you're on our waitlist for earlier appointments. We'll text if a slot opens before your Dec 15 appointment. Reply YES to accept or NO to skip. Reply STOP anytime to opt out.
+    """
+    greeting = f"Hi {patient_name}, you're" if patient_name else "You're"
+    
+    if current_appt_date:
+        appt_str = format_for_sms(current_appt_date, include_date=True, include_time=False)
+        context = f" before your {appt_str} appointment"
+    else:
+        context = ""
+    
+    return (
+        f"Texas Pulmonary & Critical Care: {greeting} on our waitlist for earlier appointments. "
+        f"We'll text if a slot opens{context}. Reply YES to accept or NO to skip. Reply STOP anytime to opt out."
     )
 
 

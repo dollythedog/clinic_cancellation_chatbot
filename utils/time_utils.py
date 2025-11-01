@@ -112,13 +112,14 @@ def make_aware(dt: datetime, tz: Optional[ZoneInfo] = None) -> datetime:
     return dt.replace(tzinfo=target_tz)
 
 
-def format_for_sms(dt: datetime, include_date: bool = True) -> str:
+def format_for_sms(dt: datetime, include_date: bool = True, include_time: bool = True) -> str:
     """
     Format datetime for SMS display in Central Time.
     
     Args:
         dt: Datetime to format (UTC or aware)
         include_date: Whether to include the date (default: True)
+        include_time: Whether to include the time (default: True)
         
     Returns:
         str: Human-readable time string
@@ -129,13 +130,19 @@ def format_for_sms(dt: datetime, include_date: bool = True) -> str:
         'Nov 1 at 2:00 PM CT'
         >>> format_for_sms(utc_time, include_date=False)
         '2:00 PM CT'
+        >>> format_for_sms(utc_time, include_time=False)
+        'Nov 1'
     """
     local_time = to_local(dt) if dt.tzinfo else make_aware(dt)
     
-    if include_date:
+    if include_date and include_time:
         return local_time.strftime("%b %d at %I:%M %p CT")
-    else:
+    elif include_date and not include_time:
+        return local_time.strftime("%b %d")
+    elif not include_date and include_time:
         return local_time.strftime("%I:%M %p CT")
+    else:
+        return local_time.strftime("%b %d")  # Default to date if both False
 
 
 def is_within_contact_hours(

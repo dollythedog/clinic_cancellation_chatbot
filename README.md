@@ -226,6 +226,75 @@ Higher scores = higher priority. Tie-breaker: earliest waitlist join time.
 
 ## 📨 SMS Message Flow
 
+```mermaid
+flowchart TD
+    Start([Staff Logs Cancellation]) --> CreateEvent[Create Cancellation Event in DB]
+    CreateEvent --> Orchestrator[Orchestrator Triggered]
+    Orchestrator --> CheckWaitlist{Waitlist
+Has Eligible
+Patients?}
+    
+    CheckWaitlist -->|No| Log1[Log: No candidates available] --> End1([End])
+    CheckWaitlist -->|Yes| Prioritizer[Prioritizer Calculates Scores]
+    
+    Prioritizer --> SelectTop[Select Top 3 by Priority Score]
+    SelectTop --> CheckContactHours{Within
+Contact Hours?}
+    
+    CheckContactHours -->|No| Schedule[Schedule for Next Contact Window] --> End2([End])
+    CheckContactHours -->|Yes| CreateOffers[Create Offer Records in DB]
+    
+    CreateOffers --> SendBatch[Send Batch SMS via Twilio]
+    SendBatch --> SetTimer[Start 7-Minute Hold Timer]
+    SetTimer --> Wait[Wait for Response...]
+    
+    Wait --> ResponseCheck{Patient
+Response?}
+    
+    ResponseCheck -->|"YES"| FirstYes{First YES
+to Reply?}
+    FirstYes -->|Yes - Race Safe Lock| ConfirmSlot[Confirm Appointment - Update DB]
+    ConfirmSlot --> SendConfirm[Send Confirmation SMS]
+    SendConfirm --> NotifyOthers[Notify Other Candidates Slot Taken]
+    NotifyOthers --> UpdateWaitlist[Update Waitlist Entry to Matched]
+    UpdateWaitlist --> LogSuccess[Log Successful Fill] --> End3([End])
+    
+    FirstYes -->|No - Already Taken| SendSorry[Send "Slot Already Filled" SMS] --> End4([End])
+    
+    ResponseCheck -->|"NO"| LogDecline[Log Decline]
+    LogDecline --> CheckOthers{Other Offers
+Still Pending?}
+    CheckOthers -->|Yes| Wait
+    CheckOthers -->|No| CheckTimer
+    
+    ResponseCheck -->|Timeout 7 min| CheckTimer{Any YES
+Responses?}
+    CheckTimer -->|No| ExpireOffers[Expire All Current Offers]
+    ExpireOffers --> CheckMore{More Waitlist
+Patients?}
+    CheckMore -->|Yes| Prioritizer
+    CheckMore -->|No| LogUnfilled[Log: Unable to Fill] --> End5([End])
+    
+    CheckTimer -->|Yes| SendConfirm
+    
+    ResponseCheck -->|"STOP"| OptOut[Mark Patient as Opted Out] --> End6([End])
+    ResponseCheck -->|"HELP"| SendHelp[Send Help Message] --> Wait
+    ResponseCheck -->|Unknown| SendHelp
+
+    style Start fill:#e1f5e1
+    style End1 fill:#ffe1e1
+    style End2 fill:#ffe1e1
+    style End3 fill:#e1f5e1
+    style End4 fill:#ffe1e1
+    style End5 fill:#ffe1e1
+    style End6 fill:#ffe1e1
+    style ConfirmSlot fill:#90ee90
+    style SendBatch fill:#87ceeb
+    style FirstYes fill:#ffcccb
+```
+
+### Process Steps
+
 1. **Cancellation logged** (manual or Greenway integration)
 2. **System identifies top 3 candidates** from waitlist
 3. **Batch SMS sent** with 7-minute hold timer

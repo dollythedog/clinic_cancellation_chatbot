@@ -228,69 +228,50 @@ Higher scores = higher priority. Tie-breaker: earliest waitlist join time.
 
 ```mermaid
 flowchart TD
-    Start([Staff Logs Cancellation]) --> CreateEvent[Create Cancellation Event in DB]
-    CreateEvent --> Orchestrator[Orchestrator Triggered]
-    Orchestrator --> CheckWaitlist{Waitlist
-Has Eligible
-Patients?}
+    Start([Cancellation: Nov 1 at 10:00 AM]) --> Batch[Send to Top 3 Waitlist Patients]
     
-    CheckWaitlist -->|No| Log1[Log: No candidates available] --> End1([End])
-    CheckWaitlist -->|Yes| Prioritizer[Prioritizer Calculates Scores]
+    Batch --> P1["Patient A receives:<br/>TPCCC: An earlier appointment<br/>opened Nov 1 at 10:00 AM<br/>at Main Clinic. Reply YES<br/>to claim or NO to skip.<br/>Expires in 7 min."]
     
-    Prioritizer --> SelectTop[Select Top 3 by Priority Score]
-    SelectTop --> CheckContactHours{Within
-Contact Hours?}
+    Batch --> P2["Patient B receives:<br/>TPCCC: An earlier appointment<br/>opened Nov 1 at 10:00 AM<br/>at Main Clinic. Reply YES<br/>to claim or NO to skip.<br/>Expires in 7 min."]
     
-    CheckContactHours -->|No| Schedule[Schedule for Next Contact Window] --> End2([End])
-    CheckContactHours -->|Yes| CreateOffers[Create Offer Records in DB]
+    Batch --> P3["Patient C receives:<br/>TPCCC: An earlier appointment<br/>opened Nov 1 at 10:00 AM<br/>at Main Clinic. Reply YES<br/>to claim or NO to skip.<br/>Expires in 7 min."]
     
-    CreateOffers --> SendBatch[Send Batch SMS via Twilio]
-    SendBatch --> SetTimer[Start 7-Minute Hold Timer]
-    SetTimer --> Wait[Wait for Response...]
+    P1 --> Wait[7-Minute Hold Timer Active]
+    P2 --> Wait
+    P3 --> Wait
     
-    Wait --> ResponseCheck{Patient
-Response?}
+    Wait --> Response{Patient Response}
     
-    ResponseCheck -->|"YES"| FirstYes{First YES
-to Reply?}
-    FirstYes -->|Yes - Race Safe Lock| ConfirmSlot[Confirm Appointment - Update DB]
-    ConfirmSlot --> SendConfirm[Send Confirmation SMS]
-    SendConfirm --> NotifyOthers[Notify Other Candidates Slot Taken]
-    NotifyOthers --> UpdateWaitlist[Update Waitlist Entry to Matched]
-    UpdateWaitlist --> LogSuccess[Log Successful Fill] --> End3([End])
+    Response -->|Patient B replies YES first| Winner["Patient B receives:<br/>TPCCC: Confirmed. You are<br/>scheduled Nov 1 at 10:00 AM<br/>at Main Clinic. Reply STOP<br/>to opt out of future messages."]
     
-    FirstYes -->|No - Already Taken| SendSorry[Send "Slot Already Filled" SMS] --> End4([End])
+    Winner --> Others["Patients A & C receive:<br/>TPCCC: The Nov 1 10:00 AM<br/>appointment has been filled.<br/>You remain on the waitlist."]
     
-    ResponseCheck -->|"NO"| LogDecline[Log Decline]
-    LogDecline --> CheckOthers{Other Offers
-Still Pending?}
+    Others --> Success([Slot Filled Successfully])
+    
+    Response -->|Patient replies NO| Decline["Patient receives:<br/>TPCCC: Understood. You remain<br/>on the waitlist for future<br/>openings."]
+    
+    Decline --> CheckOthers{Other patients<br/>still pending?}
     CheckOthers -->|Yes| Wait
-    CheckOthers -->|No| CheckTimer
+    CheckOthers -->|No| NextBatch
     
-    ResponseCheck -->|Timeout 7 min| CheckTimer{Any YES
-Responses?}
-    CheckTimer -->|No| ExpireOffers[Expire All Current Offers]
-    ExpireOffers --> CheckMore{More Waitlist
-Patients?}
-    CheckMore -->|Yes| Prioritizer
-    CheckMore -->|No| LogUnfilled[Log: Unable to Fill] --> End5([End])
+    Response -->|7 minutes - no replies| NextBatch[Send to Next 3 Patients]
+    NextBatch --> Batch
     
-    CheckTimer -->|Yes| SendConfirm
+    Response -->|Patient replies STOP| OptOut["Patient receives:<br/>TPCCC: You have been removed<br/>from the waitlist. Text START<br/>to rejoin."]
+    OptOut --> Removed([Patient Opted Out])
     
-    ResponseCheck -->|"STOP"| OptOut[Mark Patient as Opted Out] --> End6([End])
-    ResponseCheck -->|"HELP"| SendHelp[Send Help Message] --> Wait
-    ResponseCheck -->|Unknown| SendHelp
-
+    Response -->|Patient replies HELP| Help["Patient receives:<br/>TPCCC: Reply YES to accept<br/>an offer, NO to decline, or<br/>STOP to opt out. Questions?<br/>Call 214-555-1234."]
+    Help --> Wait
+    
+    Response -->|Unknown reply| Help
+    
     style Start fill:#e1f5e1
-    style End1 fill:#ffe1e1
-    style End2 fill:#ffe1e1
-    style End3 fill:#e1f5e1
-    style End4 fill:#ffe1e1
-    style End5 fill:#ffe1e1
-    style End6 fill:#ffe1e1
-    style ConfirmSlot fill:#90ee90
-    style SendBatch fill:#87ceeb
-    style FirstYes fill:#ffcccb
+    style Success fill:#90ee90
+    style Removed fill:#ffcccb
+    style Winner fill:#87ceeb
+    style P1 fill:#fff4e6
+    style P2 fill:#fff4e6
+    style P3 fill:#fff4e6
 ```
 
 ### Process Steps

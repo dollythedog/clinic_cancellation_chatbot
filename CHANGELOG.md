@@ -10,7 +10,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Streamlit dashboard (Milestone 3)
 - STOP/HELP keyword handling (Milestone 4)
 - Comprehensive test suite
 - Greenway EHR integration (Phase 2)
@@ -20,6 +19,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ML-based patient preference learning (Phase 3)
 - Multi-language SMS support
 - Patient portal integration
+
+---
+
+## [0.3.0] - 2025-11-01
+
+### Added - Milestone 3: Dashboard Complete
+
+**Dashboard Features:**
+- Streamlit dashboard with real-time monitoring
+- Active cancellations view with countdown timers
+- Waitlist leaderboard sorted by priority score
+- Active offers display with patient information
+- Message audit log with filtering (direction, phone)
+- Admin tools for manual boost and waitlist management
+- Auto-refresh functionality (30-second intervals)
+
+**Sample Data:**
+- Created seed_sample_data.py script for testing
+- Generates 3 providers, 5 patients, 2 cancellations with offers
+- Includes sample message log entries
+
+### Fixed
+- SQLAlchemy enum handling (added values_callable for Windows compatibility)
+- Windows date formatting issues (removed %-I format specifier)
+- Dashboard infinite rerun loop (auto-refresh now works correctly)
+- Database enum queries now use .value instead of .name
+
+### Changed
+- Auto-refresh default changed to OFF (manual opt-in)
+- Added time.sleep(30) to prevent immediate reruns
+
+### Issues Closed
+- #16 - Create Streamlit dashboard app
+- #17 - Build active cancellations view
+- #18 - Add waitlist leaderboard
+- Fixed database enum compatibility bug
+- Fixed Windows datetime formatting bug
+
+**Milestone Progress:** 18/25 issues complete (72%)
 
 ---
 

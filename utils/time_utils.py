@@ -133,9 +133,9 @@ def format_for_sms(dt: datetime, include_date: bool = True) -> str:
     local_time = to_local(dt) if dt.tzinfo else make_aware(dt)
     
     if include_date:
-        return local_time.strftime("%b %d at %-I:%M %p CT")
+        return local_time.strftime("%b %d at %I:%M %p CT")
     else:
-        return local_time.strftime("%-I:%M %p CT")
+        return local_time.strftime("%I:%M %p CT")
 
 
 def is_within_contact_hours(

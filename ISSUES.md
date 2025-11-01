@@ -44,16 +44,16 @@ Track project issues locally and sync with GitHub Issues. Use `make issues-sync`
 
 ---
 
-## 📋 Milestone 3: Dashboard
+## 📋 Milestone 3: Dashboard - COMPLETE
 
-### 🟡 Medium Priority
-- [ ] [#16](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/16) - Create Streamlit dashboard app (@dollythedog)
-- [ ] [#17](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/17) - Build active cancellations view (@dollythedog)
-- [ ] [#18](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/18) - Add waitlist leaderboard (sorted by priority) (@dollythedog)
-- [ ] Display active offers with countdown timers (@dollythedog)
-- [ ] Implement message audit log viewer (@dollythedog)
-- [ ] Add manual boost controls (@dollythedog)
-- [ ] Add waitlist CRUD operations (@dollythedog)
+### 🟡 Medium Priority (DONE)
+- [x] [#16](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/16) - Create Streamlit dashboard app (@dollythedog) ✅
+- [x] [#17](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/17) - Build active cancellations view (@dollythedog) ✅
+- [x] [#18](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/18) - Add waitlist leaderboard (sorted by priority) (@dollythedog) ✅
+- [x] Display active offers with countdown timers (@dollythedog) ✅
+- [x] Implement message audit log viewer (@dollythedog) ✅
+- [x] Add manual boost controls (@dollythedog) ✅
+- [x] Add waitlist CRUD operations (@dollythedog) ✅
 
 ---
 
@@ -141,16 +141,23 @@ gh issue create --title "Task name" --label "priority-high,milestone-1-bootstrap
 
 **✅ Milestone 1 COMPLETE:** Bootstrap (Issues #1-#7) - 100% done  
 **✅ Milestone 2 COMPLETE:** Core Logic (Issues #8-#15) - 100% done  
-**Next Session:** Start Milestone 3 - Dashboard (Issues #16-#18)  
+**✅ Milestone 3 COMPLETE:** Dashboard (Issues #16-#18) - 100% done  
+**🔜 Next Session:** Start Milestone 4 - Hardening (Issues #19-#22)  
 **Blocker:** None
+
+**Recent Fixes (2025-11-01):**
+- Fixed SQLAlchemy enum handling for Windows compatibility
+- Fixed Windows date formatting issues (%-I format)
+- Fixed dashboard infinite rerun loop
+- Created seed_sample_data.py for testing
 
 ---
 
 ## 📈 Quick Stats
 
 - **Total Issues Created:** 25
-- **Open Issues:** 10
-- **Closed Issues:** 15 ✅
-- **Milestones Complete:** 2 of 5 (40%)
+- **Open Issues:** 7
+- **Closed Issues:** 18 ✅
+- **Milestones Complete:** 3 of 5 (60%)
 - **High Priority Remaining:** 2
 - **HIPAA Critical:** 6

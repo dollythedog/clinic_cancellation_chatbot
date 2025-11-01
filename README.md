@@ -111,16 +111,27 @@ The Clinic Cancellation Chatbot is a secure, automated system that fills last-mi
    # - TWILIO credentials (or use mock mode: USE_MOCK_TWILIO=true)
    ```
 
-6. **Run the application**
+6. **Seed sample data** (optional for testing)
+   ```powershell
+   python scripts/seed_sample_data.py
+   ```
+
+7. **Run the application**
    ```powershell
    # Start FastAPI backend
-   python run.py
-   # or
-   uvicorn app.main:app --reload
+   make run-api
+   # or manually:
+   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    
-   # Access API at:
-   # - Docs: http://localhost:8000/docs
-   # - Health: http://localhost:8000/health
+   # In a separate terminal, start the dashboard:
+   make run-dashboard
+   # or manually:
+   streamlit run dashboard/app.py --server.port 8502
+   
+   # Access:
+   # - API Docs: http://localhost:8000/docs
+   # - API Health: http://localhost:8000/health
+   # - Dashboard: http://localhost:8502
    ```
 
 ---
@@ -243,11 +254,18 @@ Reply STOP to opt out of future messages.
 The Streamlit dashboard provides real-time visibility into:
 
 * **Active Cancellations** - Open slots with countdown timers
-* **Waitlist Leaderboard** - Sorted by priority score
-* **Offer Log** - Message history and outcomes
+* **Waitlist Leaderboard** - Sorted by priority score  
+* **Active Offers** - Pending offers with expiration timers
+* **Message Log** - SMS audit trail with filtering
 * **Admin Controls** - Manual boost, add/remove patients
 
-Access at `http://localhost:8501` (internal LAN only)
+**Access:** `http://localhost:8502`
+
+**Features:**
+- Real-time metrics in sidebar (cancellations, waitlist size, pending offers)
+- Auto-refresh option (30-second intervals)
+- Multiple views: Dashboard, Waitlist, Message Log, Admin Tools
+- HIPAA-compliant display (last 4 digits of phone numbers only)
 
 ---
 
@@ -358,13 +376,21 @@ For technical support or questions:
 
 ---
 
-**Status:** 🚧 Active Development - Milestone 2 Complete  
-**Last Updated:** October 31, 2025  
-**Version:** 0.2.0
+**Status:** 🚧 Active Development - Milestone 3 Complete  
+**Last Updated:** November 1, 2025  
+**Version:** 0.3.0
 
 **Recent Progress:**
 - ✅ Milestone 1: Bootstrap (100%)
 - ✅ Milestone 2: Core Logic (100%)
-- 🔜 Milestone 3: Dashboard (Next)
+- ✅ Milestone 3: Dashboard (100%) - **Just Completed!**
+- 🔜 Milestone 4: Hardening (Next)
 
-**Completed:** 15/25 issues (60%)
+**Completed:** 18/25 issues (72%)
+
+**Latest Session (2025-11-01):**
+- Fixed SQLAlchemy enum handling for Windows
+- Fixed Windows date formatting issues
+- Fixed dashboard infinite rerun loop  
+- Created seed_sample_data.py for easy testing
+- Dashboard now fully functional with sample data

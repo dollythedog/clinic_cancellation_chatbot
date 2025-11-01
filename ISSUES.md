@@ -28,19 +28,19 @@ Track project issues locally and sync with GitHub Issues. Use `make issues-sync`
 
 ---
 
-## 📋 Milestone 2: Core Logic
+## 📋 Milestone 2: Core Logic - COMPLETE
 
-### 🔴 High Priority
-- [ ] [#8](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/8) - Implement ORM models (models.py) (@dollythedog)
-- [ ] [#9](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/9) - Build prioritizer.py with scoring algorithm (@dollythedog)
-- [ ] [#10](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/10) - Create orchestrator.py (batch sending, hold timers) (@dollythedog)
-- [ ] [#15](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/15) - Add race-safe reservation logic (SELECT FOR UPDATE) (@dollythedog)
+### 🔴 High Priority (DONE)
+- [x] [#8](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/8) - Implement ORM models (models.py) (@dollythedog) ✅
+- [x] [#9](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/9) - Build prioritizer.py with scoring algorithm (@dollythedog) ✅
+- [x] [#10](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/10) - Create orchestrator.py (batch sending, hold timers) (@dollythedog) ✅
+- [x] [#15](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/15) - Add race-safe reservation logic (SELECT FOR UPDATE) (@dollythedog) ✅
 
-### 🟡 Medium Priority
-- [ ] [#11](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/11) - Implement SMS webhook handler (/sms/inbound) (@dollythedog)
-- [ ] [#12](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/12) - Implement status webhook handler (/twilio/status) (@dollythedog)
-- [ ] [#13](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/13) - Build manual cancellation entry endpoint (/admin/cancel) (@dollythedog)
-- [ ] [#14](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/14) - Set up APScheduler for hold timer expiration (@dollythedog)
+### 🟡 Medium Priority (DONE)
+- [x] [#11](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/11) - Implement SMS webhook handler (/sms/inbound) (@dollythedog) ✅
+- [x] [#12](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/12) - Implement status webhook handler (/twilio/status) (@dollythedog) ✅
+- [x] [#13](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/13) - Build manual cancellation entry endpoint (/admin/cancel) (@dollythedog) ✅
+- [x] [#14](https://github.com/dollythedog/clinic_cancellation_chatbot/issues/14) - Set up APScheduler for hold timer expiration (@dollythedog) ✅
 
 ---
 
@@ -140,7 +140,8 @@ gh issue create --title "Task name" --label "priority-high,milestone-1-bootstrap
 ## 🎯 Current Focus
 
 **✅ Milestone 1 COMPLETE:** Bootstrap (Issues #1-#7) - 100% done  
-**Next Session:** Start Milestone 2 - Core Logic (Issues #8-#15)  
+**✅ Milestone 2 COMPLETE:** Core Logic (Issues #8-#15) - 100% done  
+**Next Session:** Start Milestone 3 - Dashboard (Issues #16-#18)  
 **Blocker:** None
 
 ---
@@ -148,8 +149,8 @@ gh issue create --title "Task name" --label "priority-high,milestone-1-bootstrap
 ## 📈 Quick Stats
 
 - **Total Issues Created:** 25
-- **Open Issues:** 18
-- **Closed Issues:** 7 ✅
-- **Milestones Complete:** 1 of 5 (20%)
-- **High Priority Remaining:** 6
+- **Open Issues:** 10
+- **Closed Issues:** 15 ✅
+- **Milestones Complete:** 2 of 5 (40%)
+- **High Priority Remaining:** 2
 - **HIPAA Critical:** 6

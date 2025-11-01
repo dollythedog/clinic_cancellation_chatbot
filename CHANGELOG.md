@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
+- Streamlit dashboard (Milestone 3)
+- STOP/HELP keyword handling (Milestone 4)
+- Comprehensive test suite
 - Greenway EHR integration (Phase 2)
 - Automatic appointment confirmation in EHR
 - Multi-location support
@@ -17,6 +20,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ML-based patient preference learning (Phase 3)
 - Multi-language SMS support
 - Patient portal integration
+
+---
+
+## [0.2.0] - 2025-10-31
+
+### Added - Milestone 2: Core Logic Complete
+
+**Core Infrastructure:**
+- SQLAlchemy ORM models for all 7 database tables
+- Database connection and session management (db.py)
+- Pydantic settings with environment variable configuration
+- Twilio SMS API wrapper with mock mode support
+
+**Business Logic:**
+- Priority scoring algorithm (prioritizer.py) with 4-component calculation
+- Offer orchestrator (orchestrator.py) with batch sending and hold timers
+- SMS message templates (HIPAA-compliant, no PHI)
+- APScheduler for background jobs (hold timer checks, priority recalc)
+
+**API Endpoints:**
+- Admin API: Manual cancellation entry, waitlist management
+- SMS webhook: Inbound message handler (YES/NO/STOP/HELP)
+- Status webhook: Twilio delivery status callbacks
+
+**Features:**
+- Race-safe slot reservation using SELECT FOR UPDATE
+- Batch offering: 3 patients per batch with 7-minute hold timers
+- Automatic priority recalculation (hourly background job)
+- TCPA-compliant keyword handling (STOP, HELP)
+- Comprehensive message audit logging
+- Database setup script for existing PostgreSQL servers
+- Docker Compose configuration for local development
+
+### Fixed
+- Pydantic v2 compatibility (added `extra="ignore"` to Config)
+- SQLAlchemy 2.0 text() wrapper for raw SQL queries
+- FastAPI Form data support (added python-multipart dependency)
+
+### Documentation
+- Updated README with database setup instructions
+- Added database setup script (setup_db.py)
+- Created .env.dev template for development
+- Added run.py for easy server startup
+
+### Issues Closed
+- #8 - Implement ORM models
+- #9 - Build prioritizer with scoring algorithm  
+- #10 - Create orchestrator (batch sending, hold timers)
+- #11 - Implement SMS webhook handler
+- #12 - Implement status webhook handler
+- #13 - Build manual cancellation entry endpoint
+- #14 - Set up APScheduler
+- #15 - Add race-safe reservation logic
+
+**Milestone Progress:** 15/25 issues complete (60%)
 
 ---
 

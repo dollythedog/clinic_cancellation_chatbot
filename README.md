@@ -79,8 +79,8 @@ The Clinic Cancellation Chatbot is a secure, automated system that fills last-mi
 
 2. **Create virtual environment**
    ```powershell
-   python -m venv venv
-   .\venv\Scripts\Activate.ps1
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
    ```
 
 3. **Install dependencies**
@@ -88,25 +88,39 @@ The Clinic Cancellation Chatbot is a secure, automated system that fills last-mi
    pip install -r requirements.txt
    ```
 
-4. **Configure environment**
+4. **Set up database**
+   
+   **Option A: Docker (recommended for development)**
    ```powershell
-   cp configs\.env.example configs\.env
-   # Edit configs\.env with your credentials
+   docker-compose up -d
+   ```
+   
+   **Option B: Existing PostgreSQL server**
+   ```powershell
+   # Edit scripts/setup_db.py with your connection details
+   python scripts/setup_db.py
    ```
 
-5. **Initialize database**
+5. **Configure environment**
    ```powershell
-   python scripts/init_db.py
-   alembic upgrade head
+   # Copy example .env file
+   cp .env.dev .env
+   
+   # Edit .env with your credentials:
+   # - DATABASE_URL (from setup script output)
+   # - TWILIO credentials (or use mock mode: USE_MOCK_TWILIO=true)
    ```
 
 6. **Run the application**
    ```powershell
    # Start FastAPI backend
-   uvicorn app.main:app --host 0.0.0.0 --port 8000
+   python run.py
+   # or
+   uvicorn app.main:app --reload
    
-   # Start Streamlit dashboard (separate terminal)
-   streamlit run dashboard/app.py
+   # Access API at:
+   # - Docs: http://localhost:8000/docs
+   # - Health: http://localhost:8000/health
    ```
 
 ---
@@ -344,6 +358,13 @@ For technical support or questions:
 
 ---
 
-**Status:** 🚧 Active Development  
-**Last Updated:** October 2025  
-**Version:** 0.1.0 (MVP)
+**Status:** 🚧 Active Development - Milestone 2 Complete  
+**Last Updated:** October 31, 2025  
+**Version:** 0.2.0
+
+**Recent Progress:**
+- ✅ Milestone 1: Bootstrap (100%)
+- ✅ Milestone 2: Core Logic (100%)
+- 🔜 Milestone 3: Dashboard (Next)
+
+**Completed:** 15/25 issues (60%)

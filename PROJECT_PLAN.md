@@ -279,41 +279,47 @@ You'll no longer receive earlier-slot messages from TPCCC.
 
 ## 🚀 Implementation Milestones
 
-### **Milestone 1: Bootstrap** (Days 1-2)
+### **Milestone 1: Bootstrap** ✅ COMPLETE (Days 1-2)
 
 **Tasks:**
 - [x] Initialize Git repository
-- [ ] Create project directory structure
-- [ ] Set up virtual environment and requirements.txt
-- [ ] Create .env.example with all config variables
-- [ ] Define database schema (schema.sql)
-- [ ] Set up Alembic for migrations
-- [ ] Implement time_utils.py (UTC/Central conversion)
-- [ ] Create basic FastAPI skeleton with health check
+- [x] Create project directory structure
+- [x] Set up virtual environment and requirements.txt
+- [x] Create .env.example with all config variables
+- [x] Define database schema (schema.sql)
+- [x] Set up Alembic for migrations
+- [x] Implement time_utils.py (UTC/Central conversion)
+- [x] Create basic FastAPI skeleton with health check
 
 **Deliverables:**
-- Working development environment
-- Database schema documented
-- FastAPI app serving `/health` endpoint
+- ✅ Working development environment
+- ✅ Database schema documented
+- ✅ FastAPI app serving `/health` endpoint
+
+**Issues Closed:** #1-7
 
 ---
 
-### **Milestone 2: Core Logic** (Days 3-5)
+### **Milestone 2: Core Logic** ✅ COMPLETE (Days 3-5)
 
 **Tasks:**
-- [ ] Implement ORM models (models.py)
-- [ ] Build prioritizer.py with scoring algorithm
-- [ ] Create orchestrator.py (batch sending, hold timers)
-- [ ] Implement SMS webhook handler (/sms/inbound)
-- [ ] Implement status webhook handler (/twilio/status)
-- [ ] Build manual cancellation entry endpoint (/admin/cancel)
-- [ ] Set up APScheduler for hold timer expiration
-- [ ] Add race-safe reservation logic (SELECT FOR UPDATE)
+- [x] Implement ORM models (models.py)
+- [x] Build prioritizer.py with scoring algorithm
+- [x] Create orchestrator.py (batch sending, hold timers)
+- [x] Implement SMS webhook handler (/sms/inbound)
+- [x] Implement status webhook handler (/twilio/status)
+- [x] Build manual cancellation entry endpoint (/admin/cancel)
+- [x] Set up APScheduler for hold timer expiration
+- [x] Add race-safe reservation logic (SELECT FOR UPDATE)
 
 **Deliverables:**
-- Working offer orchestration engine
-- SMS message handling (inbound/outbound)
-- Cancellation event processing
+- ✅ Working offer orchestration engine
+- ✅ SMS message handling (inbound/outbound)
+- ✅ Cancellation event processing
+- ✅ Race-safe slot claiming with database locking
+- ✅ Background scheduler for hold timer management
+
+**Issues Closed:** #8-15
 
 ---
 

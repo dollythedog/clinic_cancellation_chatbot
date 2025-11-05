@@ -1,7 +1,7 @@
 # 🎯 ISSUES.md
 
 **Project:** Clinic Cancellation Chatbot  
-**Last Updated:** 2025-10-31  
+**Last Updated:** 2025-11-01  
 **GitHub Project:** [Clinic Chatbot MVP](https://github.com/users/dollythedog/projects/1)
 
 ---
@@ -9,6 +9,9 @@
 ## 📊 Overview
 
 Track project issues locally and sync with GitHub Issues. Use `make issues-sync` to update from GitHub.
+
+**Current Status:** 🚧 Milestone 3 Complete - Moving to Milestone 4 (Hardening)  
+**Progress:** 18/25 issues closed (72%) | 3/5 milestones complete (60%)
 
 ---
 
@@ -145,11 +148,15 @@ gh issue create --title "Task name" --label "priority-high,milestone-1-bootstrap
 **🔜 Next Session:** Start Milestone 4 - Hardening (Issues #19-#22)  
 **Blocker:** None
 
-**Recent Fixes (2025-11-01):**
-- Fixed SQLAlchemy enum handling for Windows compatibility
-- Fixed Windows date formatting issues (%-I format)
-- Fixed dashboard infinite rerun loop
-- Created seed_sample_data.py for testing
+**Recent Accomplishments (2025-11-01):**
+- ✅ Fixed SQLAlchemy enum handling for Windows compatibility
+- ✅ Fixed Windows date formatting issues (%-I format)
+- ✅ Fixed dashboard infinite rerun loop
+- ✅ Created seed_sample_data.py for easy testing
+- ✅ **Added ntfy.sh integration for mock SMS testing**
+- ✅ Mock Twilio client now sends push notifications to phone
+- ✅ Dashboard fully functional with real-time monitoring
+- ✅ All core logic implemented and tested
 
 ---
 

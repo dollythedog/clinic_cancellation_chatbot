@@ -83,6 +83,16 @@ st.markdown("""
         font-weight: bold;
         color: #1976d2;
     }
+    /* Fix button sizing - make all buttons same height */
+    div[data-testid="column"] button[kind="secondary"],
+    div[data-testid="column"] button[kind="primary"] {
+        height: 3.5rem !important;
+        min-height: 3.5rem !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        line-height: 1.2 !important;
+        padding: 0.5rem !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -100,16 +110,6 @@ with st.sidebar:
         import time
         time.sleep(30)
         st.rerun()
-    
-    st.divider()
-    
-    # Navigation
-    st.header("📊 View")
-    view = st.radio(
-        "Select view:",
-        ["Dashboard", "Waitlist", "Message Log", "Admin Tools"],
-        label_visibility="collapsed"
-    )
     
     st.divider()
     
@@ -139,6 +139,53 @@ with st.sidebar:
         st.metric("Active Cancellations", "Error")
         st.metric("Waitlist Size", "Error")
         st.metric("Pending Offers", "Error")
+
+
+# Main navigation with tab-style buttons
+st.markdown("---")
+col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
+
+with col1:
+    if st.button("📊 Dashboard", use_container_width=True, type="primary" if st.session_state.get('view', 'Dashboard') == 'Dashboard' else "secondary"):
+        st.session_state.view = 'Dashboard'
+        st.rerun()
+
+with col2:
+    if st.button("📋 Waitlist", use_container_width=True, type="primary" if st.session_state.get('view') == 'Waitlist' else "secondary"):
+        st.session_state.view = 'Waitlist'
+        st.rerun()
+
+with col3:
+    if st.button("📨 Message Log", use_container_width=True, type="primary" if st.session_state.get('view') == 'Message Log' else "secondary"):
+        st.session_state.view = 'Message Log'
+        st.rerun()
+
+with col4:
+    if st.button("🔧 Admin Tools", use_container_width=True, type="primary" if st.session_state.get('view') == 'Admin Tools' else "secondary"):
+        st.session_state.view = 'Admin Tools'
+        st.rerun()
+
+with col5:
+    if st.button("➕ Add Cancellation", use_container_width=True, type="primary" if st.session_state.get('view') == 'Add Cancellation' else "secondary"):
+        st.session_state.view = 'Add Cancellation'
+        st.rerun()
+
+with col6:
+    if st.button("🆕 Add Patient", use_container_width=True, type="primary" if st.session_state.get('view') == 'Add Patient' else "secondary"):
+        st.session_state.view = 'Add Patient'
+        st.rerun()
+
+with col7:
+    if st.button("📸 Photo Guide", use_container_width=True, type="primary" if st.session_state.get('view') == 'Photo Guide' else "secondary"):
+        st.session_state.view = 'Photo Guide'
+        st.rerun()
+
+# Initialize view if not set
+if 'view' not in st.session_state:
+    st.session_state.view = 'Dashboard'
+
+view = st.session_state.view
+st.markdown("---")
 
 
 def show_dashboard():
@@ -454,13 +501,308 @@ def show_message_card(msg: MessageLog):
             st.error(f"Error: {msg.error_message} (Code: {msg.error_code})")
 
 
+def show_add_cancellation():
+    """Display form to manually add a cancellation event"""
+    
+    st.header("➕ Add Cancellation")
+    st.caption("Manually log a cancellation to trigger waitlist offers")
+    
+    try:
+        with get_session() as db:
+            # Get list of providers
+            providers = db.query(ProviderReference).filter(
+                ProviderReference.active == True
+            ).order_by(ProviderReference.provider_name).all()
+            
+            if not providers:
+                st.error("No active providers found in the database. Please add providers first.")
+                return
+            
+            provider_options = {
+                f"{p.provider_name} ({p.provider_type})": p.id
+                for p in providers
+            }
+            
+            with st.form("add_cancellation_form"):
+                st.subheader("Appointment Details")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    selected_provider_name = st.selectbox(
+                        "Provider *",
+                        options=list(provider_options.keys()),
+                        help="Select the provider for this appointment"
+                    )
+                    
+                    location = st.text_input(
+                        "Location *",
+                        placeholder="Main Clinic",
+                        help="Clinic location name"
+                    )
+                    
+                    reason = st.selectbox(
+                        "Reason for Cancellation",
+                        options=[
+                            "Patient cancelled",
+                            "Provider schedule change",
+                            "Emergency",
+                            "No-show",
+                            "Other"
+                        ]
+                    )
+                
+                with col2:
+                    slot_date = st.date_input(
+                        "Appointment Date *",
+                        value=datetime.now().date(),
+                        min_value=datetime.now().date()
+                    )
+                    
+                    slot_time = st.time_input(
+                        "Appointment Time *",
+                        value=datetime.now().time()
+                    )
+                    
+                    duration_minutes = st.number_input(
+                        "Duration (minutes) *",
+                        min_value=15,
+                        max_value=240,
+                        value=30,
+                        step=15
+                    )
+                
+                notes = st.text_area(
+                    "Notes (optional)",
+                    placeholder="Additional information about this cancellation..."
+                )
+                
+                st.markdown("**Required fields marked with ***")
+                
+                submit_button = st.form_submit_button("🚀 Create Cancellation & Send Offers", type="primary")
+                
+                if submit_button:
+                    if not location:
+                        st.error("Location is required")
+                    else:
+                        try:
+                            provider_id = provider_options[selected_provider_name]
+                            
+                            # Combine date and time to create datetime
+                            slot_start = datetime.combine(slot_date, slot_time)
+                            slot_end = slot_start + timedelta(minutes=duration_minutes)
+                            
+                            # Convert to UTC (assuming local is Central Time)
+                            from utils.time_utils import local_to_utc
+                            slot_start_utc = local_to_utc(slot_start)
+                            slot_end_utc = local_to_utc(slot_end)
+                            
+                            with get_session() as add_db:
+                                # Create cancellation event
+                                cancellation = CancellationEvent(
+                                    provider_id=provider_id,
+                                    location=location,
+                                    slot_start_at=slot_start_utc,
+                                    slot_end_at=slot_end_utc,
+                                    reason=reason,
+                                    status=CancellationStatus.OPEN,
+                                    notes=notes
+                                )
+                                add_db.add(cancellation)
+                                add_db.commit()
+                                add_db.refresh(cancellation)
+                                
+                                st.success(f"✅ Cancellation created successfully! (ID: {cancellation.id})")
+                                st.info("🤖 The orchestrator will automatically send offers to the top waitlist candidates within moments.")
+                                
+                                # Show summary
+                                st.markdown("**Cancellation Summary:**")
+                                st.write(f"- Provider: {selected_provider_name}")
+                                st.write(f"- Location: {location}")
+                                st.write(f"- Time: {slot_start.strftime('%b %d, %Y at %I:%M %p')} CT")
+                                st.write(f"- Duration: {duration_minutes} minutes")
+                                st.write(f"- Reason: {reason}")
+                                
+                                # Button to go to dashboard
+                                if st.button("📊 View on Dashboard"):
+                                    st.session_state.view = 'Dashboard'
+                                    st.rerun()
+                                
+                        except Exception as e:
+                            st.error(f"Error creating cancellation: {str(e)}")
+                            import traceback
+                            st.code(traceback.format_exc())
+        
+    except Exception as e:
+        st.error(f"Error loading form: {e}")
+
+
+def show_add_patient():
+    """Display form to add a patient to the waitlist"""
+    
+    st.header("🆕 Add Patient to Waitlist")
+    st.caption("Add a new patient or reactivate an existing patient on the waitlist")
+    
+    with st.form("add_patient_form"):
+        st.subheader("Patient Information")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            phone = st.text_input(
+                "Phone Number (E.164 format) *",
+                placeholder="+12145551234",
+                help="Format: +1 followed by 10-digit number"
+            )
+            
+            display_name = st.text_input(
+                "Display Name *",
+                placeholder="John D.",
+                help="Patient's name (first name + last initial for privacy)"
+            )
+            
+            current_appt_date = st.date_input(
+                "Current Appointment Date (if scheduled)",
+                value=None,
+                min_value=datetime.now().date(),
+                help="If patient already has an appointment, enter the date"
+            )
+        
+        with col2:
+            provider_type_pref = st.selectbox(
+                "Provider Type Preference",
+                options=["Any", "MD/DO", "APP"],
+                help="Patient's preference for provider type"
+            )
+            
+            urgent = st.checkbox(
+                "🚨 Urgent Flag",
+                help="Check if patient needs urgent/priority access (+30 priority points)"
+            )
+            
+            manual_boost = st.slider(
+                "Manual Boost",
+                min_value=0,
+                max_value=40,
+                value=0,
+                help="Additional priority points (0-40)"
+            )
+        
+        st.subheader("Additional Details")
+        
+        notes = st.text_area(
+            "Notes (optional)",
+            placeholder="Reason for waitlist, special requirements, etc.",
+            help="Internal notes about this patient (not sent in SMS)"
+        )
+        
+        st.markdown("**Required fields marked with ***")
+        
+        submit_button = st.form_submit_button("✅ Add to Waitlist", type="primary")
+        
+        if submit_button:
+            # Validation
+            errors = []
+            if not phone:
+                errors.append("Phone number is required")
+            elif not phone.startswith("+1") or len(phone) != 12:
+                errors.append("Phone must be in E.164 format: +12145551234")
+            
+            if not display_name:
+                errors.append("Display name is required")
+            
+            if errors:
+                for error in errors:
+                    st.error(f"❌ {error}")
+            else:
+                try:
+                    with get_session() as add_db:
+                        # Check if patient already exists
+                        patient = add_db.query(PatientContact).filter(
+                            PatientContact.phone_e164 == phone
+                        ).first()
+                        
+                        if patient:
+                            st.info(f"ℹ️ Patient {phone} already exists in database")
+                            # Update display name if different
+                            if display_name and patient.display_name != display_name:
+                                patient.display_name = display_name
+                        else:
+                            # Create new patient
+                            patient = PatientContact(
+                                phone_e164=phone,
+                                display_name=display_name,
+                                consent_source="manual_entry",
+                                opt_out=False
+                            )
+                            add_db.add(patient)
+                            add_db.flush()  # Get patient ID
+                            st.success(f"✅ New patient created: {display_name}")
+                        
+                        # Check for existing active waitlist entry
+                        existing_entry = add_db.query(WaitlistEntry).filter(
+                            WaitlistEntry.patient_id == patient.id,
+                            WaitlistEntry.active == True
+                        ).first()
+                        
+                        if existing_entry:
+                            st.warning(f"⚠️ Patient already has an active waitlist entry (ID: {existing_entry.id})")
+                            st.write("Update the entry instead?")
+                        else:
+                            # Convert current_appt_date to datetime if provided
+                            current_appt_datetime = None
+                            if current_appt_date:
+                                current_appt_datetime = datetime.combine(
+                                    current_appt_date,
+                                    datetime.min.time()
+                                )
+                                from utils.time_utils import local_to_utc
+                                current_appt_datetime = local_to_utc(current_appt_datetime)
+                            
+                            # Create waitlist entry
+                            entry = WaitlistEntry(
+                                patient_id=patient.id,
+                                urgent_flag=urgent,
+                                manual_boost=manual_boost,
+                                provider_type_preference=provider_type_pref if provider_type_pref != "Any" else None,
+                                current_appt_at=current_appt_datetime,
+                                notes=notes,
+                                active=True
+                            )
+                            add_db.add(entry)
+                            add_db.commit()
+                            add_db.refresh(entry)
+                            
+                            st.success(f"✅ {display_name} added to waitlist! (Entry ID: {entry.id})")
+                            
+                            # Show summary
+                            st.markdown("**Waitlist Entry Summary:**")
+                            st.write(f"- Patient: {display_name}")
+                            st.write(f"- Phone: {phone}")
+                            st.write(f"- Urgent: {'Yes 🚨' if urgent else 'No'}")
+                            st.write(f"- Manual Boost: {manual_boost}")
+                            st.write(f"- Provider Type: {provider_type_pref}")
+                            if current_appt_date:
+                                st.write(f"- Current Appointment: {current_appt_date.strftime('%b %d, %Y')}")
+                            
+                            # Button to view waitlist
+                            if st.button("📋 View Waitlist"):
+                                st.session_state.view = 'Waitlist'
+                                st.rerun()
+                            
+                except Exception as e:
+                    st.error(f"Error adding patient: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+
+
 def show_admin_tools():
     """Display admin controls for waitlist management"""
     
     st.header("🔧 Admin Tools")
     st.warning("⚠️ Admin actions will modify the database")
     
-    tab1, tab2, tab3 = st.tabs(["Manual Boost", "Add to Waitlist", "Remove from Waitlist"])
+    tab1, tab2 = st.tabs(["Manual Boost", "Remove from Waitlist"])
     
     with tab1:
         st.subheader("📈 Manual Boost")
@@ -506,61 +848,6 @@ def show_admin_tools():
             st.error(f"Error loading waitlist entries: {e}")
     
     with tab2:
-        st.subheader("➕ Add Patient to Waitlist")
-        st.caption("Add a new patient or activate existing patient")
-        
-        phone = st.text_input("Phone (E.164 format)", placeholder="+12145551234")
-        display_name = st.text_input("Display Name", placeholder="John D.")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            urgent = st.checkbox("Urgent Flag")
-            manual_boost = st.slider("Manual Boost", 0, 40, 0)
-        
-        with col2:
-            provider_type = st.selectbox("Provider Type", ["Any", "MD/DO", "APP"])
-        
-        notes = st.text_area("Notes")
-        
-        if st.button("Add to Waitlist"):
-            if not phone:
-                st.error("Phone number required")
-            else:
-                try:
-                    with get_session() as add_db:
-                        # Check if patient exists
-                        patient = add_db.query(PatientContact).filter(
-                            PatientContact.phone_e164 == phone
-                        ).first()
-                        
-                        if not patient:
-                            # Create new patient
-                            patient = PatientContact(
-                                phone_e164=phone,
-                                display_name=display_name,
-                                consent_source="manual_entry"
-                            )
-                            add_db.add(patient)
-                            add_db.flush()
-                        
-                        # Create waitlist entry
-                        entry = WaitlistEntry(
-                            patient_id=patient.id,
-                            urgent_flag=urgent,
-                            manual_boost=manual_boost,
-                            provider_type_preference=provider_type if provider_type != "Any" else None,
-                            notes=notes,
-                            active=True
-                        )
-                        add_db.add(entry)
-                        add_db.commit()
-                        
-                        st.success(f"✅ {display_name or phone} added to waitlist")
-                        st.rerun()
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
-    
-    with tab3:
         st.subheader("➖ Remove from Waitlist")
         st.caption("Deactivate a patient from the waitlist")
         
@@ -596,6 +883,111 @@ def show_admin_tools():
             st.error(f"Error loading waitlist entries: {e}")
 
 
+def show_photo_guide():
+    """Display photo upload guide with link to presentation"""
+    
+    st.header("📸 Photo Upload Guide")
+    st.markdown("Learn how to add screenshots and images to any slide in the executive presentation.")
+    
+    # Presentation link
+    presentation_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'docs', 'executive_presentation.html'))
+    presentation_url = f"file:///{presentation_path.replace(os.sep, '/')}"
+    
+    st.markdown(f"""
+    ### 📋 Dynamic Image Gallery System
+    
+    The presentation has a **fully dynamic** image loading system. Just drop files into the `docs/images/` folder
+    and they automatically appear on the corresponding slide!
+    
+    #### Naming Convention
+    
+    ```
+    image<NUMBER>-slide-<H>-<V>.<extension>
+    ```
+    
+    Where:
+    - `<NUMBER>` = Image number (1, 2, 3, etc.)
+    - `<H>` = Horizontal slide number (check top-right of presentation)
+    - `<V>` = Vertical slide number
+    - `<extension>` = png, jpg, or jpeg
+    
+    #### Examples
+    
+    - **Slide 5.3**: `image1-slide-5-3.png`, `image2-slide-5-3.png`
+    - **Slide 2.3**: `image1-slide-2-3.png`, `image2-slide-2-3.jpg`
+    - **Slide 7.1**: `image1-slide-7-1.png`
+    
+    #### How to Find Slide Numbers
+    
+    1. Open the presentation (button below)
+    2. Navigate to the slide you want
+    3. Look at the **top-right corner** for the slide number (e.g., "5/3")
+    4. Use that number in your filename: `5/3` → `image1-slide-5-3.png`
+    
+    #### Supported Formats
+    - PNG (recommended for screenshots)
+    - JPG/JPEG (smaller file size)
+    
+    #### Best Practices
+    - Keep file sizes under 2MB
+    - Use sequential numbering (1, 2, 3...)
+    - PNG gives better quality for text/screenshots
+    - Images appear in a responsive grid with lightbox
+    
+    #### View Full Presentation
+    
+    Click below to open the presentation:
+    """)
+    
+    # Create a link that opens in browser
+    st.markdown(f'<a href="{presentation_url}" target="_blank"><button style="background-color: #4CAF50; color: white; padding: 10px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">🎯 Open Full Presentation</button></a>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Show current images in docs/images folder
+    st.subheader("📁 Current Images")
+    
+    images_path = os.path.join(os.path.dirname(__file__), '..', 'docs', 'images')
+    
+    if os.path.exists(images_path):
+        # Get all image files
+        all_image_files = [f for f in os.listdir(images_path) if f.lower().endswith(('.png', '.jpg', '.jpeg')) and 'slide-' in f.lower()]
+        
+        if all_image_files:
+            # Group by slide
+            import re
+            slides_dict = {}
+            for img_file in all_image_files:
+                match = re.search(r'slide-(\d+)-(\d+)', img_file.lower())
+                if match:
+                    slide_id = f"{match.group(1)}-{match.group(2)}"
+                    if slide_id not in slides_dict:
+                        slides_dict[slide_id] = []
+                    slides_dict[slide_id].append(img_file)
+            
+            st.write(f"Found {len(all_image_files)} image(s) across {len(slides_dict)} slide(s):")
+            
+            # Display by slide
+            for slide_id in sorted(slides_dict.keys()):
+                with st.expander(f"🖼️ Slide {slide_id.replace('-', '.')} ({len(slides_dict[slide_id])} images)", expanded=True):
+                    image_files = slides_dict[slide_id]
+                    cols_per_row = 3
+                    for i in range(0, len(image_files), cols_per_row):
+                        cols = st.columns(cols_per_row)
+                        for j, col in enumerate(cols):
+                            if i + j < len(image_files):
+                                img_file = image_files[i + j]
+                                with col:
+                                    st.image(os.path.join(images_path, img_file), caption=img_file, use_container_width=True)
+        else:
+            st.info("📸 No images found yet. Add screenshots to `docs/images/` folder with naming pattern: `image1-slide-X-Y.png`")
+    else:
+        st.warning(f"Images folder not found: {images_path}")
+    
+    st.markdown("---")
+    st.caption("For more information, see: `docs/images/README.md`")
+
+
 # Main content area
 if view == "Dashboard":
     show_dashboard()
@@ -605,6 +997,12 @@ elif view == "Message Log":
     show_message_log()
 elif view == "Admin Tools":
     show_admin_tools()
+elif view == "Add Cancellation":
+    show_add_cancellation()
+elif view == "Add Patient":
+    show_add_patient()
+elif view == "Photo Guide":
+    show_photo_guide()
 
 
 # Footer

@@ -26,10 +26,10 @@ MSG ?=
 # PHONY targets
 # ---------------------------------------------------------------------
 .PHONY: help venv install \
-        run-api run-dashboard \
+        run-api run-dashboard run-presentation \
         test test-cov test-watch \
         lint format typecheck quality \
-        db-init db-upgrade db-downgrade db-migrate \
+        db-init db-upgrade db-downgrade db-migrate seed-data \
         git-pull git-push git-status \
         clean clean-pycache clean-all
 
@@ -47,6 +47,7 @@ help:
 	@echo "Development:"
 	@echo "  make run-api               Start FastAPI backend (with reload)"
 	@echo "  make run-dashboard         Start Streamlit dashboard"
+	@echo "  make run-presentation      Open executive presentation in browser"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test                  Run all tests"
@@ -64,6 +65,7 @@ help:
 	@echo "  make db-upgrade            Apply all migrations"
 	@echo "  make db-downgrade          Rollback one migration"
 	@echo "  make db-migrate MSG='...'  Create new migration"
+	@echo "  make seed-data             Load sample data for testing"
 	@echo ""
 	@echo "Git / Maintenance:"
 	@echo "  make git-pull              Pull latest changes from GitHub"
@@ -100,6 +102,10 @@ run-api:
 run-dashboard:
 	@echo "[INFO] Starting Streamlit dashboard on http://localhost:8501 ..."
 	$(PYTHON) -m streamlit run dashboard/app.py
+
+run-presentation:
+	@echo "[INFO] Opening executive presentation in browser..."
+	Start-Process "docs/executive_presentation.html"
 
 # ---------------------------------------------------------------------
 # 🧪 Testing
@@ -162,6 +168,11 @@ db-migrate:
 	@if ("$(MSG)" -eq "") { echo "[ERROR] Must pass MSG='migration description'"; exit 1 }
 	@echo "[INFO] Creating new migration: $(MSG)"
 	$(PYTHON) -m alembic revision --autogenerate -m "$(MSG)"
+
+seed-data:
+	@echo "[INFO] Loading sample data into database..."
+	$(PYTHON) scripts/seed_sample_data.py
+	@echo "[INFO] Sample data loaded successfully"
 
 # ---------------------------------------------------------------------
 # 🔧 Git & Cleanup

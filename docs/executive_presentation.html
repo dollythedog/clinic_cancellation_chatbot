@@ -173,6 +173,8 @@
       font-size: 0.7em;
       background: #f8f9fa;
       margin: 1em 0;
+      white-space: pre;
+      overflow-x: auto;
     }
     
     /* Checklist items */
@@ -190,6 +192,64 @@
       bottom: auto;
       right: 8px;
       font-size: 0.8em;
+    }
+    
+    /* Fragment grey-out effect - previously shown fragments fade to grey */
+    .fragment.visible:not(.current-fragment) {
+      opacity: 0.45;
+      color: #888;
+      transition: opacity 0.5s ease, color 0.5s ease;
+    }
+    
+    .fragment.current-fragment {
+      opacity: 1 !important;
+      color: inherit !important;
+    }
+    
+    /* Table of contents styling */
+    .toc-slide {
+      text-align: left !important;
+      padding: 1.5em 2em !important;
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+    
+    .toc-slide h2 {
+      font-size: 1.3em;
+      margin-bottom: 0.5em;
+    }
+    
+    .toc-slide ul {
+      list-style: none;
+      font-size: 0.7em;
+      line-height: 1.6;
+      margin: 0;
+      padding: 0;
+    }
+    
+    .toc-slide li {
+      margin-bottom: 0.5em;
+      padding: 0;
+      position: relative;
+    }
+    
+    .toc-slide a {
+      display: block;
+      color: #005ea2;
+      text-decoration: none;
+      font-weight: 500;
+      padding: 0.6em 1em;
+      background: #f0f4f8;
+      border-left: 4px solid #005ea2;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+    
+    .toc-slide a:hover {
+      background: #e8f4f8;
+      border-left-color: #0074c8;
+      transform: translateX(5px);
+      box-shadow: 0 2px 4px rgba(0, 94, 162, 0.15);
     }
     
     /* Image gallery grid - compact icon view */
@@ -265,6 +325,23 @@
         <p><strong>Organization:</strong> Texas Pulmonary & Critical Care Consultants</p>
         <p><strong>Date:</strong> November 1, 2025</p>
         <p><strong>Version:</strong> 0.3.0 (72% Complete)</p>
+      </section>
+      
+      <!-- Table of Contents -->
+      <section class="toc-slide">
+        <h2>📑 Table of Contents</h2>
+        <ul>
+          <li><a href="#/2">📋 Project Overview</a></li>
+          <li><a href="#/3">📊 Current Progress</a></li>
+          <li><a href="#/4">🏗️ Technical Architecture</a></li>
+          <li><a href="#/5">✨ Key Features</a></li>
+          <li><a href="#/6">🔐 HIPAA Compliance & Security</a></li>
+          <li><a href="#/7">🔜 Immediate Next Steps</a></li>
+          <li><a href="#/8">💰 Investment & Resources</a></li>
+          <li><a href="#/9">⚠️ Risks & Mitigation</a></li>
+          <li><a href="#/10">📌 Summary & Recommendation</a></li>
+          <li><a href="#/11">❓ Questions & Discussion</a></li>
+        </ul>
       </section>
       
       <!-- Overview Section -->
@@ -416,19 +493,45 @@
         
         <section class="content-slide">
           <h2>System Components</h2>
-          <div class="architecture-box">
-┌─────────────┐         ┌──────────────┐         ┌─────────────┐
-│   Staff     │────────>│   FastAPI    │<────────│   Twilio    │
-│  Dashboard  │         │   Backend    │         │  SMS API    │
-└─────────────┘         └──────┬───────┘         └─────────────┘
-                               │
-                               │
-                        ┌──────▼───────┐
-                        │  PostgreSQL  │
-                        │   Database   │
-                        └──────────────┘
+          <div style="font-size: 0.7em;">
+            <div class="two-column" style="gap: 0.6em; margin: 0.5em 0;">
+              <div class="col">
+                <div class="highlight-box" style="text-align: center; padding: 0.6em; margin: 0;">
+                  <div style="font-size: 1.5em; margin-bottom: 0.2em;">🖥️</div>
+                  <strong style="font-size: 0.95em;">Staff Dashboard</strong>
+                  <div style="font-size: 0.8em; color: #666; margin-top: 0.2em;">Streamlit UI</div>
+                </div>
+              </div>
+              <div class="col">
+                <div class="highlight-box" style="text-align: center; padding: 0.6em; margin: 0;">
+                  <div style="font-size: 1.5em; margin-bottom: 0.2em;">📱</div>
+                  <strong style="font-size: 0.95em;">Twilio SMS API</strong>
+                  <div style="font-size: 0.8em; color: #666; margin-top: 0.2em;">Message delivery</div>
+                </div>
+              </div>
+            </div>
+            
+            <div style="text-align: center; margin: 0.3em 0;">
+              <div style="color: #005ea2; font-size: 1.2em;">↓</div>
+            </div>
+            
+            <div class="highlight-box" style="text-align: center; padding: 0.6em; background: #005ea2; color: white; border-left-color: #0074c8; margin: 0;">
+              <div style="font-size: 1.5em; margin-bottom: 0.2em;">⚙️</div>
+              <strong style="color: white; font-size: 0.95em;">FastAPI Backend</strong>
+              <div style="font-size: 0.8em; margin-top: 0.2em; opacity: 0.9;">Core orchestration engine</div>
+            </div>
+            
+            <div style="text-align: center; margin: 0.3em 0;">
+              <div style="color: #005ea2; font-size: 1.2em;">↓</div>
+            </div>
+            
+            <div class="highlight-box" style="text-align: center; padding: 0.6em; margin: 0;">
+              <div style="font-size: 1.5em; margin-bottom: 0.2em;">🗄️</div>
+              <strong style="font-size: 0.95em;">PostgreSQL Database</strong>
+              <div style="font-size: 0.8em; color: #666; margin-top: 0.2em;">Data persistence & audit logs</div>
+            </div>
           </div>
-          <div class="highlight-box">
+          <div class="highlight-box" style="margin-top: 0.8em; font-size: 0.75em; padding: 0.6em;">
             <strong>Hosting:</strong> On-premises Windows Server (existing infrastructure)
           </div>
         </section>
@@ -612,8 +715,8 @@
         
         <section class="content-slide">
           <h2>Security Features</h2>
-          <div style="font-size: 0.75em;">
-            <ul>
+          <div style="font-size: 0.68em;">
+            <ul style="line-height: 1.4;">
               <li><strong>Principle of Least Privilege</strong> - Database access controls</li>
               <li><strong>Race-Safe Slot Reservation</strong> - SELECT FOR UPDATE prevents double-booking</li>
               <li><strong>Rate Limiting</strong> - Prevents SMS spam (Milestone 4)</li>
@@ -621,7 +724,7 @@
               <li><strong>Secure Credentials</strong> - Environment variables, no hardcoded secrets</li>
               <li><strong>Internal Dashboard Only</strong> - No external network exposure</li>
             </ul>
-            <div class="highlight-box warning">
+            <div class="highlight-box warning" style="margin-top: 0.8em; padding: 0.6em;">
               <strong>Pre-Production Requirement:</strong> Complete security audit and penetration testing
             </div>
           </div>
@@ -683,16 +786,16 @@
         
         <section class="content-slide">
           <h2>Pre-Production Requirements</h2>
-          <div class="checklist">
-            <p><strong>Security & Compliance:</strong></p>
-            <ul>
-              <li>☐ <strong>#23 - Sign Twilio BAA</strong> (Business Associate Agreement)</li>
-              <li>☐ <strong>#24 - A2P 10DLC registration</strong> (required for SMS)</li>
-              <li>☐ <strong>#25 - PHI verification audit</strong> (no PHI in messages)</li>
-              <li>☐ Webhook signature verification</li>
-              <li>☐ Database encryption validation</li>
-              <li>☐ Create least-privilege DB user</li>
-              <li>☐ Staff training completion</li>
+          <div class="checklist" style="font-size: 0.65em;">
+            <p style="margin-bottom: 0.5em;"><strong>Security & Compliance:</strong></p>
+            <ul style="line-height: 1.4;">
+              <li style="margin-bottom: 0.3em;">☐ <strong>#23 - Sign Twilio BAA</strong> (Business Associate Agreement)</li>
+              <li style="margin-bottom: 0.3em;">☐ <strong>#24 - A2P 10DLC registration</strong> (required for SMS)</li>
+              <li style="margin-bottom: 0.3em;">☐ <strong>#25 - PHI verification audit</strong> (no PHI in messages)</li>
+              <li style="margin-bottom: 0.3em;">☐ Webhook signature verification</li>
+              <li style="margin-bottom: 0.3em;">☐ Database encryption validation</li>
+              <li style="margin-bottom: 0.3em;">☐ Create least-privilege DB user</li>
+              <li style="margin-bottom: 0.3em;">☐ Staff training completion</li>
             </ul>
           </div>
         </section>
@@ -763,28 +866,33 @@
         
         <section class="content-slide">
           <h2>Expected Benefits</h2>
-          <div style="font-size: 0.75em;">
-            <p><strong>Operational:</strong></p>
-            <ul>
-              <li>80% reduction in manual phone call time</li>
-              <li>2-hour average slot fill time (vs. 4-8 hours manual)</li>
-              <li>Reduced front desk burden during busy periods</li>
-              <li>Consistent, fair waitlist management</li>
-            </ul>
-            
-            <p><strong>Financial:</strong></p>
-            <ul>
-              <li>Increased provider utilization (fewer empty slots)</li>
-              <li>Estimated 15-20 additional appointments per month</li>
-              <li>Staff time reallocation to higher-value tasks</li>
-            </ul>
-            
-            <p><strong>Patient Experience:</strong></p>
-            <ul>
-              <li>Faster access to earlier appointments</li>
-              <li>Transparent, automated process</li>
-              <li>24/7 response capability</li>
-            </ul>
+          <div style="font-size: 0.7em;">
+            <div class="two-column" style="gap: 1.5em;">
+              <div class="col">
+                <p><strong>Operational:</strong></p>
+                <ul style="margin-top: 0.3em;">
+                  <li>80% reduction in manual phone call time</li>
+                  <li>2-hour average slot fill time (vs. 4-8 hours manual)</li>
+                  <li>Reduced front desk burden</li>
+                  <li>Consistent, fair waitlist management</li>
+                </ul>
+                
+                <p style="margin-top: 0.8em;"><strong>Financial:</strong></p>
+                <ul style="margin-top: 0.3em;">
+                  <li>Increased provider utilization (fewer empty slots)</li>
+                  <li>Est. 15-20 additional appointments/month</li>
+                  <li>Staff time reallocation to higher-value tasks</li>
+                </ul>
+              </div>
+              <div class="col">
+                <p><strong>Patient Experience:</strong></p>
+                <ul style="margin-top: 0.3em;">
+                  <li>Faster access to earlier appointments</li>
+                  <li>Transparent, automated process</li>
+                  <li>24/7 response capability</li>
+                </ul>
+              </div>
+            </div>
           </div>
         </section>
       </section>
@@ -797,25 +905,25 @@
         
         <section class="content-slide">
           <h2>Identified Risks</h2>
-          <div style="font-size: 0.7em;">
-            <div class="highlight-box warning">
+          <div style="font-size: 0.65em;">
+            <div class="highlight-box warning" style="padding: 0.6em; margin-bottom: 0.5em;">
               <strong>Risk 1: HIPAA Compliance Violation</strong>
-              <p><strong>Mitigation:</strong> Pre-production security audit, Twilio BAA, minimal PHI in messages, comprehensive audit logging</p>
+              <p style="margin: 0.3em 0 0 0;"><strong>Mitigation:</strong> Pre-production security audit, Twilio BAA, minimal PHI in messages, comprehensive audit logging</p>
             </div>
             
-            <div class="highlight-box warning">
+            <div class="highlight-box warning" style="padding: 0.6em; margin-bottom: 0.5em;">
               <strong>Risk 2: Patient Opt-Out Rate Too High</strong>
-              <p><strong>Mitigation:</strong> Clear consent process, STOP keyword compliance, respectful contact hours (8am-8pm)</p>
+              <p style="margin: 0.3em 0 0 0;"><strong>Mitigation:</strong> Clear consent process, STOP keyword compliance, respectful contact hours (8am-8pm)</p>
             </div>
             
-            <div class="highlight-box warning">
+            <div class="highlight-box warning" style="padding: 0.6em; margin-bottom: 0.5em;">
               <strong>Risk 3: Low Response Rate</strong>
-              <p><strong>Mitigation:</strong> A/B test message wording, optimize hold timer duration, analyze response patterns</p>
+              <p style="margin: 0.3em 0 0 0;"><strong>Mitigation:</strong> A/B test message wording, optimize hold timer duration, analyze response patterns</p>
             </div>
             
-            <div class="highlight-box warning">
+            <div class="highlight-box warning" style="padding: 0.6em; margin-bottom: 0.5em;">
               <strong>Risk 4: System Downtime</strong>
-              <p><strong>Mitigation:</strong> Fallback to manual process, monitoring alerts, database backups, redundant infrastructure</p>
+              <p style="margin: 0.3em 0 0 0;"><strong>Mitigation:</strong> Fallback to manual process, monitoring alerts, database backups, redundant infrastructure</p>
             </div>
           </div>
         </section>

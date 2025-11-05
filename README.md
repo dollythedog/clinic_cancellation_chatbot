@@ -345,6 +345,8 @@ pytest tests/test_orchestrator.py -v
 * [PROJECT_CHARTER.md](PROJECT_CHARTER.md) - Project goals, scope, and success criteria
 * [PROJECT_PLAN.md](PROJECT_PLAN.md) - Detailed implementation roadmap
 * [CHANGELOG.md](CHANGELOG.md) - Version history and release notes
+* [docs/executive_presentation.html](docs/executive_presentation.html) - Executive presentation (Reveal.js)
+* [docs/PRESENTATION_STYLE_GUIDE.md](docs/PRESENTATION_STYLE_GUIDE.md) - Presentation design system and templates
 * [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Deployment guide for Windows Server
 * [docs/RUNBOOK.md](docs/RUNBOOK.md) - Operations manual
 * [docs/SOP.md](docs/SOP.md) - Staff procedures

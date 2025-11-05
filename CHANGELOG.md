@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Executive presentation enhancements (docs/executive_presentation.html)
+  - Table of contents slide with clickable navigation blocks
+  - Fragment grey-out animation (previous items fade when new ones appear)
+  - Visual system components diagram with emoji icons
+  - Compact slide formatting to prevent overflow
+- Presentation style guide (docs/PRESENTATION_STYLE_GUIDE.md)
+  - Complete color palette documentation
+  - Component library with code examples
+  - Animation and transition guidelines
+  - Quick start template for future presentations
+
 ### Planned
 - STOP/HELP keyword handling (Milestone 4)
 - Comprehensive test suite

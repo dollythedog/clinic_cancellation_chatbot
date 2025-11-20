@@ -150,9 +150,11 @@ class OfferOrchestrator:
             self.session.flush()  # Get offer ID
             
             # Format SMS message
+            provider_name = cancellation.provider.provider_name if cancellation.provider else "Provider"
             message_body = format_initial_offer(
                 slot_time=cancellation.slot_start_at,
                 location=cancellation.location,
+                provider_name=provider_name,
                 hold_minutes=self.hold_minutes
             )
             
@@ -278,9 +280,11 @@ class OfferOrchestrator:
         logger.info(f"✅ Patient {patient.id} claimed slot {cancellation.id}")
         
         # Send confirmation message
+        provider_name = cancellation.provider.provider_name if cancellation.provider else "Provider"
         response = format_acceptance_winner(
             slot_time=cancellation.slot_start_at,
-            location=cancellation.location
+            location=cancellation.location,
+            provider_name=provider_name
         )
         twilio_client.send_sms(to=from_phone, body=response)
         self._log_message(
@@ -327,10 +331,29 @@ class OfferOrchestrator:
         )
         
         if offer:
+            cancellation_id = offer.cancellation_id
             offer.state = OfferState.DECLINED
             offer.declined_at = now_utc()
             self.session.commit()
             logger.info(f"Patient {patient.id} declined offer {offer.id}")
+            
+            # Check if all offers in current batch are resolved
+            cancellation = self.session.query(CancellationEvent).filter_by(id=cancellation_id).first()
+            if cancellation and cancellation.status == CancellationStatus.OPEN:
+                current_batch = max([o.batch_number for o in cancellation.offers])
+                current_batch_offers = [o for o in cancellation.offers if o.batch_number == current_batch]
+                
+                all_resolved = all(
+                    o.state in [OfferState.ACCEPTED, OfferState.DECLINED, OfferState.EXPIRED]
+                    for o in current_batch_offers
+                )
+                
+                # If all offers in batch are resolved, immediately send next batch
+                if all_resolved:
+                    logger.info(f"All offers in batch {current_batch} resolved, sending next batch immediately")
+                    offers_sent = self.send_next_batch(cancellation_id)
+                    if offers_sent > 0:
+                        logger.info(f"Sent {offers_sent} offer(s) in next batch")
         
         from app.core.templates import format_decline_response
         response = format_decline_response()

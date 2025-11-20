@@ -340,6 +340,56 @@ pytest tests/test_orchestrator.py -v
 
 ---
 
+## 🚀 Production Deployment
+
+### Windows Server Setup with NSSM
+
+The system runs as 3 Windows services managed by NSSM (Non-Sucking Service Manager):
+
+**1. FastAPI Backend Service**
+```powershell
+nssm install CancellationChatbotAPI "C:\Python311\python.exe" "-m uvicorn app.api.main:app --host 0.0.0.0 --port 8000"
+nssm set CancellationChatbotAPI AppDirectory "C:\Projects\clinic_cancellation_chatbot"
+nssm set CancellationChatbotAPI AppStdout "C:\Projects\clinic_cancellation_chatbot\data\logs\api.log"
+nssm set CancellationChatbotAPI AppStderr "C:\Projects\clinic_cancellation_chatbot\data\logs\api_error.log"
+nssm start CancellationChatbotAPI
+```
+
+**2. Streamlit Dashboard Service**
+```powershell
+nssm install CancellationChatbotDashboard "C:\Python311\python.exe" "-m streamlit run dashboard\app.py --server.port 8501 --server.address 0.0.0.0"
+nssm set CancellationChatbotDashboard AppDirectory "C:\Projects\clinic_cancellation_chatbot"
+nssm set CancellationChatbotDashboard AppStdout "C:\Projects\clinic_cancellation_chatbot\data\logs\dashboard.log"
+nssm set CancellationChatbotDashboard AppStderr "C:\Projects\clinic_cancellation_chatbot\data\logs\dashboard_error.log"
+nssm start CancellationChatbotDashboard
+```
+
+**3. Cloudflare Tunnel Service (for webhooks)**
+```powershell
+nssm install CancellationChatbotTunnel "C:\Program Files\cloudflared\cloudflared.exe" "tunnel --url http://localhost:8000"
+nssm set CancellationChatbotTunnel AppDirectory "C:\Projects\clinic_cancellation_chatbot"
+nssm set CancellationChatbotTunnel AppStdout "C:\Projects\clinic_cancellation_chatbot\data\logs\tunnel.log"
+nssm set CancellationChatbotTunnel AppStderr "C:\Projects\clinic_cancellation_chatbot\data\logs\tunnel_error.log"
+nssm start CancellationChatbotTunnel
+```
+
+### Deployment Workflow
+
+```powershell
+# On server (via RDC):
+cd C:\Projects\clinic_cancellation_chatbot
+git pull origin main
+# Services auto-restart and pick up changes
+```
+
+### Access Points
+
+- **Dashboard:** http://192.168.1.220:8501 (internal LAN)
+- **API Docs:** http://192.168.1.220:8000/docs (internal LAN)
+- **Twilio Webhooks:** via Cloudflare Tunnel URL
+
+---
+
 ## 📚 Documentation
 
 * [PROJECT_CHARTER.md](PROJECT_CHARTER.md) - Project goals, scope, and success criteria
@@ -428,24 +478,25 @@ For technical support or questions:
 
 ---
 
-**Status:** 🚧 Active Development - Milestone 3 Complete  
-**Last Updated:** November 1, 2025  
-**Version:** 0.3.0
+**Status:** ✅ Production Ready - End-to-End Tested  
+**Last Updated:** November 20, 2025  
+**Version:** 0.4.0
 
 **Recent Progress:**
 - ✅ Milestone 1: Bootstrap (100%)
 - ✅ Milestone 2: Core Logic (100%)
-- ✅ Milestone 3: Dashboard (100%) - **Just Completed!**
-- 🔜 Milestone 4: Hardening (Next)
+- ✅ Milestone 3: Dashboard (100%)
+- ✅ Production Testing Complete (100%)
+- 🚀 Ready for Server Deployment
 
-**Completed:** 18/25 issues (72%)
-
-**Latest Session (2025-11-01):**
-- ✅ Fixed SQLAlchemy enum handling for Windows
-- ✅ Fixed Windows date formatting issues
-- ✅ Fixed dashboard infinite rerun loop  
-- ✅ Created seed_sample_data.py for easy testing
-- ✅ Dashboard now fully functional with sample data
-- ✅ **Added ntfy.sh integration for mock SMS testing**
-- ✅ Mock Twilio client now sends push notifications to phone
-- ✅ Perfect for testing without real SMS costs
+**Latest Session (2025-11-20):**
+- ✅ End-to-end production testing with real Twilio SMS
+- ✅ Full YES/NO workflow validated
+- ✅ Automatic next-batch triggering on decline
+- ✅ Cloudflare Tunnel webhook integration tested
+- ✅ Comprehensive admin controls added to dashboard
+- ✅ Delete, void, edit, deactivate functions
+- ✅ Bulk operations and system cleanup tools
+- ✅ Fixed import errors and enum compatibility
+- ✅ Created process_latest_cancellation.py helper script
+- 🎯 **System validated and ready for Windows Server deployment**

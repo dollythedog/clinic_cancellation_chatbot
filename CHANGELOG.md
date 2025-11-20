@@ -9,18 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Executive presentation enhancements (docs/executive_presentation.html)
-  - Table of contents slide with clickable navigation blocks
-  - Fragment grey-out animation (previous items fade when new ones appear)
-  - Visual system components diagram with emoji icons
-  - Compact slide formatting to prevent overflow
-- Presentation style guide (docs/PRESENTATION_STYLE_GUIDE.md)
-  - Complete color palette documentation
-  - Component library with code examples
-  - Animation and transition guidelines
-  - Quick start template for future presentations
-
 ### Planned
 - STOP/HELP keyword handling (Milestone 4)
 - Comprehensive test suite
@@ -31,6 +19,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ML-based patient preference learning (Phase 3)
 - Multi-language SMS support
 - Patient portal integration
+
+---
+
+## [0.4.0] - 2025-11-20
+
+### Added - Production Testing & Admin Controls
+
+**Production Testing Complete:**
+- ✅ End-to-end testing with real Twilio SMS
+- ✅ Full YES/NO response workflow validated
+- ✅ Automatic next-batch triggering on patient decline
+- ✅ Race-safe slot claiming confirmed working
+- ✅ Cloudflare Tunnel webhook integration tested
+- ✅ Message audit logging verified
+- ✅ Dashboard real-time updates confirmed
+
+**Comprehensive Admin Controls:**
+
+*Quick Action Buttons (Dashboard View):*
+- Delete button: Permanently remove cancellation and related offers
+- Void button: Mark cancellation as aborted, expire pending offers
+- Cancel Offer button: Cancel individual pending offers
+
+*Quick Action Buttons (Waitlist View):*
+- Edit button: Opens edit form for patient details
+- Deactivate button: Remove patient from active waitlist
+- Delete button: Permanently delete patient (if no offers exist)
+
+*Enhanced Admin Tools Tab (5 sections):*
+1. Manual Boost: Adjust patient priority (0-40 points)
+2. Remove from Waitlist: Deactivate patients
+3. Bulk Operations:
+   - Expire old pending offers (by hours)
+   - Reactivate all inactive patients
+4. Cancellation Management:
+   - View/filter all cancellations by status
+   - Delete or void cancellations in bulk
+5. System Cleanup:
+   - Clear all test data (cancellations, offers, messages)
+   - Delete old message logs (by days)
+
+*Patient Edit Form:*
+- Edit display name, urgent flag, manual boost, notes
+- Form validation and error handling
+
+**Helper Scripts:**
+- Created `scripts/process_latest_cancellation.py` for manual orchestrator triggering
+- Useful for development and troubleshooting
+
+**Deployment Documentation:**
+- Added production deployment section to README
+- NSSM service installation commands for 3 services
+- Deployment workflow with git pull
+- Access points documentation
+
+### Fixed
+- Dashboard import error: `local_to_utc` → `make_aware()` + `to_utc()`
+- Streamlit form button error: Moved button outside form
+- CancellationStatus enum: Changed `CANCELLED` → `ABORTED` (3 locations)
+- Dashboard enum filter: Updated to use valid status values
+
+### Changed
+- Dashboard now handles timezone conversion properly for cancellation creation
+- Admin Tools tab expanded from 2 to 5 sections
+- Waitlist patient cards now include action buttons
+
+### Testing Results
+- ✅ SMS delivery: 100% success rate via Twilio
+- ✅ Webhook processing: Cloudflare Tunnel working
+- ✅ YES response: Confirmation + slot filled correctly
+- ✅ NO response: Immediate next batch (no 30min wait)
+- ✅ Dashboard updates: Real-time display working
+- ✅ Admin functions: Delete, void, edit all working
+
+**Status:** 🚀 Production Ready - Validated on Windows laptop, ready for server deployment
 
 ---
 

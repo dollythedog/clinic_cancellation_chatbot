@@ -297,6 +297,39 @@ def show_cancellation_card(cancel: CancellationEvent, db: Session):
                                 st.markdown(f"⏰ {mins_left:.1f}m left")
         else:
             st.warning("No offers sent yet")
+        
+        # Admin action buttons
+        st.markdown("---")
+        action_col1, action_col2, action_col3 = st.columns([1, 1, 3])
+        
+        with action_col1:
+            if st.button(f"🗑️ Delete", key=f"delete_cancel_{cancel.id}", help="Permanently delete this cancellation"):
+                try:
+                    # Delete related offers and messages first
+                    db.query(Offer).filter(Offer.cancellation_id == cancel.id).delete()
+                    db.query(CancellationEvent).filter(CancellationEvent.id == cancel.id).delete()
+                    db.commit()
+                    st.success("Cancellation deleted")
+                    st.rerun()
+                except Exception as e:
+                    db.rollback()
+                    st.error(f"Error deleting: {e}")
+        
+        with action_col2:
+            if st.button(f"❌ Void", key=f"void_cancel_{cancel.id}", help="Mark as cancelled (no longer available)"):
+                try:
+                    cancel.status = CancellationStatus.ABORTED
+                    # Expire any pending offers
+                    db.query(Offer).filter(
+                        Offer.cancellation_id == cancel.id,
+                        Offer.state == OfferState.PENDING
+                    ).update({"state": OfferState.EXPIRED})
+                    db.commit()
+                    st.success("Cancellation voided")
+                    st.rerun()
+                except Exception as e:
+                    db.rollback()
+                    st.error(f"Error voiding: {e}")
 
 
 def show_offer_card(offer: Offer, db: Session):
@@ -339,6 +372,18 @@ def show_offer_card(offer: Offer, db: Session):
             OfferState.DECLINED: "⚪ Declined"
         }.get(offer.state, offer.state.value)
         st.markdown(state_badge)
+        
+        # Add cancel button for pending offers
+        if offer.state == OfferState.PENDING:
+            if st.button("❌ Cancel", key=f"cancel_offer_{offer.id}", help="Cancel this pending offer"):
+                try:
+                    offer.state = OfferState.EXPIRED
+                    db.commit()
+                    st.success("Offer cancelled")
+                    st.rerun()
+                except Exception as e:
+                    db.rollback()
+                    st.error(f"Error: {e}")
     
     st.divider()
 
@@ -419,6 +464,53 @@ def show_waitlist_entry_card(entry: WaitlistEntry, rank: int):
         
         if entry.notes:
             st.info(f"**Notes:** {entry.notes}")
+        
+        # Admin action buttons
+        st.markdown("---")
+        action_col1, action_col2, action_col3, action_col4 = st.columns([1, 1, 1, 2])
+        
+        with action_col1:
+            if st.button("✏️ Edit", key=f"edit_patient_{entry.id}", help="Edit patient details"):
+                st.session_state.edit_patient_id = entry.id
+                st.session_state.view = 'Admin Tools'
+                st.rerun()
+        
+        with action_col2:
+            if entry.active:
+                if st.button("⏸️ Deactivate", key=f"deactivate_patient_{entry.id}", help="Remove from active waitlist"):
+                    try:
+                        with get_session() as action_db:
+                            waitlist_entry = action_db.query(WaitlistEntry).filter(
+                                WaitlistEntry.id == entry.id
+                            ).first()
+                            waitlist_entry.active = False
+                            action_db.commit()
+                            st.success("Patient deactivated")
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+        
+        with action_col3:
+            if st.button("🗑️ Delete", key=f"delete_patient_{entry.id}", help="Permanently delete patient"):
+                try:
+                    with get_session() as action_db:
+                        # Delete waitlist entry and patient if no other data
+                        action_db.query(WaitlistEntry).filter(
+                            WaitlistEntry.id == entry.id
+                        ).delete()
+                        # Check if patient has other entries or offers
+                        has_offers = action_db.query(Offer).filter(
+                            Offer.patient_id == patient.id
+                        ).count() > 0
+                        if not has_offers:
+                            action_db.query(PatientContact).filter(
+                                PatientContact.id == patient.id
+                            ).delete()
+                        action_db.commit()
+                        st.success("Patient deleted")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
 
 def show_message_log():
@@ -593,9 +685,11 @@ def show_add_cancellation():
                             slot_end = slot_start + timedelta(minutes=duration_minutes)
                             
                             # Convert to UTC (assuming local is Central Time)
-                            from utils.time_utils import local_to_utc
-                            slot_start_utc = local_to_utc(slot_start)
-                            slot_end_utc = local_to_utc(slot_end)
+                            from utils.time_utils import make_aware, to_utc
+                            slot_start_aware = make_aware(slot_start)
+                            slot_end_aware = make_aware(slot_end)
+                            slot_start_utc = to_utc(slot_start_aware)
+                            slot_end_utc = to_utc(slot_end_aware)
                             
                             with get_session() as add_db:
                                 # Create cancellation event
@@ -623,15 +717,20 @@ def show_add_cancellation():
                                 st.write(f"- Duration: {duration_minutes} minutes")
                                 st.write(f"- Reason: {reason}")
                                 
-                                # Button to go to dashboard
-                                if st.button("📊 View on Dashboard"):
-                                    st.session_state.view = 'Dashboard'
-                                    st.rerun()
+                                # Set flag to show view dashboard button
+                                st.session_state.show_dashboard_button = True
                                 
                         except Exception as e:
                             st.error(f"Error creating cancellation: {str(e)}")
                             import traceback
                             st.code(traceback.format_exc())
+            
+            # Show dashboard button outside form if cancellation was created
+            if st.session_state.get('show_dashboard_button', False):
+                if st.button("📊 View on Dashboard"):
+                    st.session_state.view = 'Dashboard'
+                    st.session_state.show_dashboard_button = False
+                    st.rerun()
         
     except Exception as e:
         st.error(f"Error loading form: {e}")
@@ -802,7 +901,18 @@ def show_admin_tools():
     st.header("🔧 Admin Tools")
     st.warning("⚠️ Admin actions will modify the database")
     
-    tab1, tab2 = st.tabs(["Manual Boost", "Remove from Waitlist"])
+    # Check if we're in edit mode for a specific patient
+    if st.session_state.get('edit_patient_id'):
+        show_edit_patient_form(st.session_state.edit_patient_id)
+        return
+    
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "Manual Boost", 
+        "Remove from Waitlist", 
+        "Bulk Operations",
+        "Cancellation Management",
+        "System Cleanup"
+    ])
     
     with tab1:
         st.subheader("📈 Manual Boost")
@@ -881,6 +991,207 @@ def show_admin_tools():
                     st.info("No active waitlist entries")
         except Exception as e:
             st.error(f"Error loading waitlist entries: {e}")
+    
+    with tab3:
+        st.subheader("📦 Bulk Operations")
+        st.caption("Perform bulk actions on multiple records")
+        
+        bulk_col1, bulk_col2 = st.columns(2)
+        
+        with bulk_col1:
+            st.markdown("**Expire Old Offers**")
+            st.write("Expire all pending offers older than X hours")
+            hours_threshold = st.number_input("Hours", min_value=1, max_value=72, value=24)
+            if st.button("⏱️ Expire Old Offers"):
+                try:
+                    with get_session() as bulk_db:
+                        cutoff_time = now_utc() - timedelta(hours=hours_threshold)
+                        result = bulk_db.query(Offer).filter(
+                            Offer.state == OfferState.PENDING,
+                            Offer.offer_sent_at < cutoff_time
+                        ).update({"state": OfferState.EXPIRED})
+                        bulk_db.commit()
+                        st.success(f"✅ Expired {result} old offers")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+        
+        with bulk_col2:
+            st.markdown("**Reactivate Inactive Patients**")
+            st.write("Reactivate all inactive waitlist entries")
+            if st.button("▶️ Reactivate All"):
+                try:
+                    with get_session() as bulk_db:
+                        result = bulk_db.query(WaitlistEntry).filter(
+                            WaitlistEntry.active == False
+                        ).update({"active": True})
+                        bulk_db.commit()
+                        st.success(f"✅ Reactivated {result} patients")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+    
+    with tab4:
+        st.subheader("🗓️ Cancellation Management")
+        st.caption("View and manage all cancellations")
+        
+        try:
+            with get_session() as db:
+                # Filter options
+                status_filter = st.selectbox(
+                    "Status",
+                    ["All", "OPEN", "FILLED", "ABORTED", "EXPIRED"]
+                )
+                
+                query = db.query(CancellationEvent).order_by(desc(CancellationEvent.created_at))
+                
+                if status_filter != "All":
+                    query = query.filter(
+                        CancellationEvent.status == CancellationStatus[status_filter]
+                    )
+                
+                cancellations = query.limit(50).all()
+                
+                if cancellations:
+                    st.write(f"Showing {len(cancellations)} cancellation(s)")
+                    
+                    for cancel in cancellations:
+                        provider_name = cancel.provider.provider_name if cancel.provider else "Unknown"
+                        slot_time = to_local(cancel.slot_start_at).strftime("%b %d at %I:%M %p")
+                        
+                        col1, col2, col3, col4, col5 = st.columns([2, 2, 1, 1, 1])
+                        
+                        with col1:
+                            st.write(f"**{provider_name}**")
+                        with col2:
+                            st.write(slot_time)
+                        with col3:
+                            st.write(cancel.status.value)
+                        with col4:
+                            if st.button("🗑️", key=f"admin_del_{cancel.id}"):
+                                try:
+                                    db.query(Offer).filter(Offer.cancellation_id == cancel.id).delete()
+                                    db.query(CancellationEvent).filter(CancellationEvent.id == cancel.id).delete()
+                                    db.commit()
+                                    st.success("Deleted")
+                                    st.rerun()
+                                except Exception as e:
+                                    db.rollback()
+                                    st.error(f"Error: {e}")
+                        with col5:
+                            if cancel.status == CancellationStatus.OPEN:
+                                if st.button("❌", key=f"admin_void_{cancel.id}"):
+                                    try:
+                                        cancel.status = CancellationStatus.ABORTED
+                                        db.commit()
+                                        st.success("Voided")
+                                        st.rerun()
+                                    except Exception as e:
+                                        db.rollback()
+                                        st.error(f"Error: {e}")
+                        
+                        st.divider()
+                else:
+                    st.info("No cancellations found")
+        except Exception as e:
+            st.error(f"Error: {e}")
+    
+    with tab5:
+        st.subheader("🧼 System Cleanup")
+        st.caption("⚠️ Use with caution - these actions delete data permanently")
+        
+        cleanup_col1, cleanup_col2 = st.columns(2)
+        
+        with cleanup_col1:
+            st.markdown("**Delete All Test Data**")
+            st.write("Remove all cancellations, offers, and messages")
+            confirm_test = st.checkbox("I understand this will delete all test data")
+            if st.button("🧽 Clear All Data", disabled=not confirm_test):
+                try:
+                    with get_session() as cleanup_db:
+                        msg_count = cleanup_db.query(MessageLog).delete()
+                        offer_count = cleanup_db.query(Offer).delete()
+                        cancel_count = cleanup_db.query(CancellationEvent).delete()
+                        cleanup_db.commit()
+                        st.success(f"✅ Deleted {cancel_count} cancellations, {offer_count} offers, {msg_count} messages")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+        
+        with cleanup_col2:
+            st.markdown("**Delete Old Messages**")
+            st.write("Remove message logs older than X days")
+            days_threshold = st.number_input("Days", min_value=1, max_value=365, value=30)
+            if st.button("🗑️ Delete Old Messages"):
+                try:
+                    with get_session() as cleanup_db:
+                        cutoff_date = now_utc() - timedelta(days=days_threshold)
+                        result = cleanup_db.query(MessageLog).filter(
+                            MessageLog.created_at < cutoff_date
+                        ).delete()
+                        cleanup_db.commit()
+                        st.success(f"✅ Deleted {result} old messages")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+
+def show_edit_patient_form(entry_id: int):
+    """Edit patient details"""
+    st.header("✏️ Edit Patient")
+    
+    try:
+        with get_session() as db:
+            entry = db.query(WaitlistEntry).filter(WaitlistEntry.id == entry_id).first()
+            
+            if not entry:
+                st.error("Patient not found")
+                if st.button("← Back to Admin Tools"):
+                    st.session_state.edit_patient_id = None
+                    st.rerun()
+                return
+            
+            patient = entry.patient
+            
+            st.write(f"**Patient:** {patient.display_name or patient.phone_e164}")
+            
+            with st.form("edit_patient_form"):
+                display_name = st.text_input("Display Name", value=patient.display_name or "")
+                urgent_flag = st.checkbox("Urgent Flag", value=entry.urgent_flag)
+                manual_boost = st.slider("Manual Boost", 0, 40, entry.manual_boost)
+                notes = st.text_area("Notes", value=entry.notes or "")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    submit = st.form_submit_button("✅ Save Changes", type="primary")
+                with col2:
+                    cancel = st.form_submit_button("❌ Cancel")
+                
+                if submit:
+                    try:
+                        with get_session() as update_db:
+                            update_entry = update_db.query(WaitlistEntry).filter(
+                                WaitlistEntry.id == entry_id
+                            ).first()
+                            update_patient = update_entry.patient
+                            
+                            update_patient.display_name = display_name
+                            update_entry.urgent_flag = urgent_flag
+                            update_entry.manual_boost = manual_boost
+                            update_entry.notes = notes
+                            
+                            update_db.commit()
+                            st.success("✅ Patient updated successfully")
+                            st.session_state.edit_patient_id = None
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Error updating patient: {e}")
+                
+                if cancel:
+                    st.session_state.edit_patient_id = None
+                    st.rerun()
+    
+    except Exception as e:
+        st.error(f"Error loading patient: {e}")
+        if st.button("← Back to Admin Tools"):
+            st.session_state.edit_patient_id = None
+            st.rerun()
 
 
 def show_photo_guide():

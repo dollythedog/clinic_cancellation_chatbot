@@ -711,17 +711,17 @@ def show_add_cancellation():
                             
                             st.success(f"✅ Cancellation created successfully! (ID: {result['id']})")
                             st.info(f"📨 Sent {result['offers_sent']} SMS offer(s) to waitlist patients")
-                                
-                                # Show summary
-                                st.markdown("**Cancellation Summary:**")
-                                st.write(f"- Provider: {selected_provider_name}")
-                                st.write(f"- Location: {location}")
-                                st.write(f"- Time: {slot_start.strftime('%b %d, %Y at %I:%M %p')} CT")
-                                st.write(f"- Duration: {duration_minutes} minutes")
-                                st.write(f"- Reason: {reason}")
-                                
-                                # Set flag to show view dashboard button
-                                st.session_state.show_dashboard_button = True
+                            
+                            # Show summary
+                            st.markdown("**Cancellation Summary:**")
+                            st.write(f"- Provider: {selected_provider_name}")
+                            st.write(f"- Location: {location}")
+                            st.write(f"- Time: {slot_start.strftime('%b %d, %Y at %I:%M %p')} CT")
+                            st.write(f"- Duration: {duration_minutes} minutes")
+                            st.write(f"- Reason: {reason}")
+                            
+                            # Set flag to show view dashboard button
+                            st.session_state.show_dashboard_button = True
                                 
                         except Exception as e:
                             st.error(f"Error creating cancellation: {str(e)}")

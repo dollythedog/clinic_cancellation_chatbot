@@ -95,6 +95,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Status:** 🚀 Production Ready - Validated on Windows laptop, ready for server deployment
 
+### Server Deployment Notes
+
+**Successful Deployment:**
+- Deployed to Windows Server (192.168.1.220)
+- Services running via NSSM (win32 version for 32-bit Windows)
+- API: Port 8000, Dashboard: Port 8503
+- PostgreSQL database on same server
+
+**Issues Encountered & Resolved:**
+1. **Streamlit email prompt blocking startup**
+   - Solution: Copy config.toml from working project (clinical_productivity)
+   - Config disables telemetry: `gatherUsageStats = false`
+
+2. **Missing psycopg2 dependency**
+   - Solution: `pip install psycopg2-binary`
+
+3. **NSSM service path issues after venv recreation**
+   - Solution: Use full path to venv python.exe in service config
+   - Path: `C:\projects\clinic_cancellation_chatbot\.venv\Scripts\python.exe`
+
+**Next Steps:**
+- Configure Cloudflare Tunnel for webhooks
+- Test end-to-end messaging from server
+- Set up automatic service restart on failure
+
 ---
 
 ## [0.3.0] - 2025-11-01

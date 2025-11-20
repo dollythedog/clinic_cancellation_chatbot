@@ -678,6 +678,8 @@ def show_add_cancellation():
                         st.error("Location is required")
                     else:
                         try:
+                            import requests
+                            
                             provider_id = provider_options[selected_provider_name]
                             
                             # Combine date and time to create datetime
@@ -691,23 +693,24 @@ def show_add_cancellation():
                             slot_start_utc = to_utc(slot_start_aware)
                             slot_end_utc = to_utc(slot_end_aware)
                             
-                            with get_session() as add_db:
-                                # Create cancellation event
-                                cancellation = CancellationEvent(
-                                    provider_id=provider_id,
-                                    location=location,
-                                    slot_start_at=slot_start_utc,
-                                    slot_end_at=slot_end_utc,
-                                    reason=reason,
-                                    status=CancellationStatus.OPEN,
-                                    notes=notes
-                                )
-                                add_db.add(cancellation)
-                                add_db.commit()
-                                add_db.refresh(cancellation)
-                                
-                                st.success(f"✅ Cancellation created successfully! (ID: {cancellation.id})")
-                                st.info("🤖 The orchestrator will automatically send offers to the top waitlist candidates within moments.")
+                            # Call API to create cancellation (triggers orchestrator automatically)
+                            api_url = "http://localhost:8000/admin/cancel"
+                            payload = {
+                                "provider_id": provider_id,
+                                "location": location,
+                                "slot_start_at": slot_start_utc.isoformat(),
+                                "slot_end_at": slot_end_utc.isoformat(),
+                                "reason": reason,
+                                "notes": notes
+                            }
+                            
+                            response = requests.post(api_url, json=payload, timeout=10)
+                            response.raise_for_status()
+                            
+                            result = response.json()
+                            
+                            st.success(f"✅ Cancellation created successfully! (ID: {result['id']})")
+                            st.info(f"📨 Sent {result['offers_sent']} SMS offer(s) to waitlist patients")
                                 
                                 # Show summary
                                 st.markdown("**Cancellation Summary:**")

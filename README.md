@@ -379,8 +379,25 @@ nssm start CancellationChatbotTunnel
 # On server (via RDC):
 cd C:\Projects\clinic_cancellation_chatbot
 git pull origin main
-# Services auto-restart and pick up changes
+# Restart services to pick up changes:
+C:\NSSM\nssm-2.24\win32\nssm.exe restart CancellationChatbotAPI
+C:\NSSM\nssm-2.24\win32\nssm.exe restart CancellationChatbotDashboard
 ```
+
+### Troubleshooting
+
+**Streamlit email prompt blocking startup:**
+- Copy config from working project: `Copy-Item C:\Projects\clinical_productivity\.streamlit\config.toml C:\projects\clinic_cancellation_chatbot\.streamlit\config.toml -Force`
+- Or create manually with `gatherUsageStats = false`
+
+**Service won't start:**
+- Check logs: `Get-Content C:\projects\clinic_cancellation_chatbot\data\logs\*.log -Tail 50`
+- Check service status: `C:\NSSM\nssm-2.24\win32\nssm.exe status ServiceName`
+- Verify ports: `netstat -ano | findstr "8000"`
+
+**Missing dependencies:**
+- Reinstall: `pip install -r requirements.txt`
+- Common missing: `pip install psycopg2-binary`
 
 ### Access Points
 

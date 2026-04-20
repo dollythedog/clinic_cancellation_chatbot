@@ -103,12 +103,15 @@ The Clinic Cancellation Chatbot is a secure, automated system that fills last-mi
 
 5. **Configure environment**
    ```powershell
-   # Copy example .env file
-   cp .env.dev .env
-   
-   # Edit .env with your credentials:
-   # - DATABASE_URL (from setup script output)
-   # - TWILIO credentials (or use mock mode: USE_MOCK_TWILIO=true)
+   # Copy the template at the repo root
+   cp .env.example .env
+
+   # Edit .env with your credentials. The following are REQUIRED;
+   # the application will refuse to start without them:
+   #   - DATABASE_URL
+   #   - TWILIO_ACCOUNT_SID
+   #   - TWILIO_AUTH_TOKEN
+   #   - TWILIO_PHONE_NUMBER
    ```
 
 6. **Seed sample data** (optional for testing)
@@ -151,9 +154,7 @@ clinic_cancellation_chatbot/
 │   ├── migrations/       # Alembic database migrations
 │   └── seed_data.py      # Test data generation
 ├── utils/                # Shared utilities
-├── tests/                # Test suite
-├── configs/
-│   └── .env.example      # Environment configuration template
+├── tests/                # pytest test suite (conftest + test modules)
 ├── data/
 │   ├── inbox/            # Incoming data staging
 │   ├── staging/          # Processing area
@@ -163,9 +164,12 @@ clinic_cancellation_chatbot/
 │   ├── DEPLOYMENT.md     # Deployment guide
 │   ├── RUNBOOK.md        # Operations manual
 │   └── SOP.md            # Staff procedures
+├── .env.example          # Environment configuration template (copy to .env at repo root)
+├── pyproject.toml        # Tool configuration (ruff, pytest)
 ├── PROJECT_CHARTER.md    # Project goals and scope
 ├── PROJECT_PLAN.md       # Implementation roadmap
 ├── CHANGELOG.md          # Version history
+├── DECISIONS.md          # Architectural and design decisions
 └── README.md             # This file
 ```
 
@@ -355,7 +359,22 @@ pytest tests/test_orchestrator.py -v
 
 ## 🛠️ Configuration
 
-Key environment variables (see `configs/.env.example`):
+All application configuration flows through a single
+[`Settings`](app/infra/settings.py) class (pydantic-settings). The full
+list of supported keys lives in [`.env.example`](.env.example) at the
+repo root — copy it to `.env` and fill in your values.
+
+Required keys (the app fails loudly at startup if any are missing):
+
+- `DATABASE_URL`
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_PHONE_NUMBER`
+
+Configuration validation runs explicitly in the FastAPI lifespan startup
+hook via `validate_settings()`. Missing required keys produce a
+`pydantic.ValidationError` and a clean stderr message naming what's
+missing. Selected highlights below:
 
 ```bash
 # Database

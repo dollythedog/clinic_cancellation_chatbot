@@ -11,7 +11,6 @@ Author: Jonathan Ives (@dollythedog)
 
 import logging
 from datetime import datetime
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -27,7 +26,7 @@ from app.infra.models import (
     ProviderReference,
     WaitlistEntry,
 )
-from utils.time_utils import now_utc, to_utc
+from utils.time_utils import now_utc
 
 logger = logging.getLogger(__name__)
 
@@ -41,19 +40,21 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 
 class CancellationCreate(BaseModel):
     """Request model for creating a cancellation"""
-    provider_id: Optional[int] = Field(None, description="Provider ID")
+
+    provider_id: int | None = Field(None, description="Provider ID")
     location: str = Field(..., description="Clinic location")
     slot_start_at: datetime = Field(..., description="Appointment start time")
     slot_end_at: datetime = Field(..., description="Appointment end time")
-    reason: Optional[str] = Field(None, description="Cancellation reason")
-    notes: Optional[str] = Field(None, description="Staff notes")
-    created_by_staff_id: Optional[int] = Field(None, description="Staff member ID")
+    reason: str | None = Field(None, description="Cancellation reason")
+    notes: str | None = Field(None, description="Staff notes")
+    created_by_staff_id: int | None = Field(None, description="Staff member ID")
 
 
 class CancellationResponse(BaseModel):
     """Response model for cancellation"""
+
     id: int
-    provider_id: Optional[int]
+    provider_id: int | None
     location: str
     slot_start_at: datetime
     slot_end_at: datetime
@@ -67,20 +68,22 @@ class CancellationResponse(BaseModel):
 
 class WaitlistEntryCreate(BaseModel):
     """Request model for adding patient to waitlist"""
+
     patient_phone: str = Field(..., description="Patient phone (E.164)")
-    patient_name: Optional[str] = Field(None, description="Patient display name")
-    provider_preference: Optional[List[str]] = Field(None, description="Preferred providers")
-    provider_type_preference: Optional[str] = Field("Any", description="Provider type preference")
-    current_appt_at: Optional[datetime] = Field(None, description="Current appointment date")
+    patient_name: str | None = Field(None, description="Patient display name")
+    provider_preference: list[str] | None = Field(None, description="Preferred providers")
+    provider_type_preference: str | None = Field("Any", description="Provider type preference")
+    current_appt_at: datetime | None = Field(None, description="Current appointment date")
     urgent_flag: bool = Field(False, description="Urgent priority")
     manual_boost: int = Field(0, description="Manual boost (0-40)")
-    notes: Optional[str] = Field(None, description="Notes")
+    notes: str | None = Field(None, description="Notes")
 
 
 class PatientBoost(BaseModel):
     """Request model for boosting patient priority"""
+
     boost_amount: int = Field(..., ge=0, le=40, description="Boost amount (0-40)")
-    reason: Optional[str] = Field(None, description="Reason for boost")
+    reason: str | None = Field(None, description="Reason for boost")
 
 
 # ============================================================================
@@ -90,22 +93,21 @@ class PatientBoost(BaseModel):
 
 @router.post("/cancel", response_model=CancellationResponse, status_code=status.HTTP_201_CREATED)
 async def create_cancellation(
-    cancellation: CancellationCreate,
-    db: Session = Depends(get_db_dependency)
+    cancellation: CancellationCreate, db: Session = Depends(get_db_dependency)
 ):
     """
     Create a new cancellation event and trigger offer orchestration.
-    
+
     This endpoint should be called by staff when a patient cancels an appointment.
     The system will automatically send offers to eligible waitlist patients.
-    
+
     Args:
         cancellation: Cancellation details
         db: Database session
-        
+
     Returns:
         Created cancellation event
-        
+
     Example:
         POST /admin/cancel
         {
@@ -118,23 +120,23 @@ async def create_cancellation(
         }
     """
     logger.info(f"Creating cancellation: {cancellation.location} at {cancellation.slot_start_at}")
-    
+
     # Validate times
     if cancellation.slot_end_at <= cancellation.slot_start_at:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="slot_end_at must be after slot_start_at"
+            detail="slot_end_at must be after slot_start_at",
         )
-    
+
     # Validate provider exists if provided
     if cancellation.provider_id:
         provider = db.query(ProviderReference).filter_by(id=cancellation.provider_id).first()
         if not provider:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Provider {cancellation.provider_id} not found"
+                detail=f"Provider {cancellation.provider_id} not found",
             )
-    
+
     # Create cancellation event
     event = CancellationEvent(
         provider_id=cancellation.provider_id,
@@ -144,21 +146,21 @@ async def create_cancellation(
         reason=cancellation.reason,
         notes=cancellation.notes,
         created_by_staff_id=cancellation.created_by_staff_id,
-        status=CancellationStatus.OPEN
+        status=CancellationStatus.OPEN,
     )
-    
+
     db.add(event)
     db.commit()
     db.refresh(event)
-    
+
     logger.info(f"✅ Cancellation {event.id} created")
-    
+
     # Trigger offer orchestration
     orchestrator = OfferOrchestrator(db)
     offers_sent = orchestrator.process_new_cancellation(event.id)
-    
+
     logger.info(f"📨 Sent {offers_sent} initial offers for cancellation {event.id}")
-    
+
     return CancellationResponse(
         id=event.id,
         provider_id=event.provider_id,
@@ -167,7 +169,7 @@ async def create_cancellation(
         slot_end_at=event.slot_end_at,
         status=event.status.value,
         offers_sent=offers_sent,
-        created_at=event.created_at
+        created_at=event.created_at,
     )
 
 
@@ -180,7 +182,7 @@ async def get_active_cancellations(db: Session = Depends(get_db_dependency)):
         .order_by(CancellationEvent.slot_start_at.asc())
         .all()
     )
-    
+
     return {
         "count": len(cancellations),
         "cancellations": [
@@ -192,7 +194,7 @@ async def get_active_cancellations(db: Session = Depends(get_db_dependency)):
                 "created_at": c.created_at,
             }
             for c in cancellations
-        ]
+        ],
     }
 
 
@@ -202,46 +204,39 @@ async def get_active_cancellations(db: Session = Depends(get_db_dependency)):
 
 
 @router.post("/waitlist", status_code=status.HTTP_201_CREATED)
-async def add_to_waitlist(
-    entry: WaitlistEntryCreate,
-    db: Session = Depends(get_db_dependency)
-):
+async def add_to_waitlist(entry: WaitlistEntryCreate, db: Session = Depends(get_db_dependency)):
     """
     Add a patient to the waitlist.
-    
+
     Args:
         entry: Waitlist entry details
         db: Database session
-        
+
     Returns:
         Created waitlist entry
     """
     # Find or create patient
     patient = db.query(PatientContact).filter_by(phone_e164=entry.patient_phone).first()
-    
+
     if not patient:
         patient = PatientContact(
             phone_e164=entry.patient_phone,
             display_name=entry.patient_name,
-            consent_source="staff_entry"
+            consent_source="staff_entry",
         )
         db.add(patient)
         db.flush()
         logger.info(f"Created new patient: {patient.id}")
-    
+
     # Check if already on waitlist
-    existing = (
-        db.query(WaitlistEntry)
-        .filter_by(patient_id=patient.id, active=True)
-        .first()
-    )
-    
+    existing = db.query(WaitlistEntry).filter_by(patient_id=patient.id, active=True).first()
+
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Patient already on active waitlist (entry ID: {existing.id})"
+            detail=f"Patient already on active waitlist (entry ID: {existing.id})",
         )
-    
+
     # Create waitlist entry
     waitlist_entry = WaitlistEntry(
         patient_id=patient.id,
@@ -251,68 +246,64 @@ async def add_to_waitlist(
         urgent_flag=entry.urgent_flag,
         manual_boost=entry.manual_boost,
         notes=entry.notes,
-        active=True
+        active=True,
     )
-    
+
     db.add(waitlist_entry)
     db.commit()
     db.refresh(waitlist_entry)
-    
+
     # Calculate initial priority score
     from app.core.prioritizer import update_priority_score
+
     update_priority_score(waitlist_entry, db)
     db.commit()
-    
+
     logger.info(f"✅ Added patient {patient.id} to waitlist (entry {waitlist_entry.id})")
-    
+
     return {
         "id": waitlist_entry.id,
         "patient_id": patient.id,
         "patient_phone": patient.phone_e164,
         "priority_score": waitlist_entry.priority_score,
-        "joined_at": waitlist_entry.joined_at
+        "joined_at": waitlist_entry.joined_at,
     }
 
 
 @router.post("/waitlist/{patient_id}/boost")
 async def boost_priority(
-    patient_id: int,
-    boost: PatientBoost,
-    db: Session = Depends(get_db_dependency)
+    patient_id: int, boost: PatientBoost, db: Session = Depends(get_db_dependency)
 ):
     """
     Manually boost a patient's priority on the waitlist.
-    
+
     Args:
         patient_id: Patient ID
         boost: Boost details
         db: Database session
-        
+
     Returns:
         Updated waitlist entry
     """
     entry = boost_patient_priority(
-        session=db,
-        patient_id=patient_id,
-        boost_amount=boost.boost_amount,
-        reason=boost.reason
+        session=db, patient_id=patient_id, boost_amount=boost.boost_amount, reason=boost.reason
     )
-    
+
     if not entry:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Active waitlist entry not found for patient {patient_id}"
+            detail=f"Active waitlist entry not found for patient {patient_id}",
         )
-    
+
     db.commit()
-    
+
     logger.info(f"✅ Boosted patient {patient_id} priority to {entry.priority_score}")
-    
+
     return {
         "patient_id": patient_id,
         "manual_boost": entry.manual_boost,
         "priority_score": entry.priority_score,
-        "reason": boost.reason
+        "reason": boost.reason,
     }
 
 
@@ -320,30 +311,24 @@ async def boost_priority(
 async def recalculate_priorities(db: Session = Depends(get_db_dependency)):
     """
     Recalculate priority scores for all active waitlist entries.
-    
+
     This is called periodically by the scheduler but can be manually triggered.
     """
     count = update_all_priority_scores(db, active_only=True)
     db.commit()
-    
+
     logger.info(f"✅ Recalculated {count} priority scores")
-    
-    return {
-        "updated_count": count,
-        "timestamp": now_utc()
-    }
+
+    return {"updated_count": count, "timestamp": now_utc()}
 
 
 @router.get("/waitlist")
-async def get_waitlist(
-    limit: int = 50,
-    db: Session = Depends(get_db_dependency)
-):
+async def get_waitlist(limit: int = 50, db: Session = Depends(get_db_dependency)):
     """Get prioritized waitlist (top patients)"""
     from app.core.prioritizer import get_prioritized_waitlist
-    
+
     entries = get_prioritized_waitlist(db, limit=limit, active_only=True)
-    
+
     return {
         "count": len(entries),
         "entries": [
@@ -358,7 +343,7 @@ async def get_waitlist(
                 "joined_at": e.joined_at,
             }
             for e in entries
-        ]
+        ],
     }
 
 

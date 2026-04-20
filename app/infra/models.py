@@ -15,9 +15,7 @@ All timestamps are stored in UTC. Use utils.time_utils for timezone conversions.
 Author: Jonathan Ives (@dollythedog)
 """
 
-from datetime import datetime
-from typing import List, Optional
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from sqlalchemy import (
     Boolean,
@@ -27,11 +25,10 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
-    String,
     Text,
-    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -48,6 +45,7 @@ import enum
 
 class CancellationStatus(str, enum.Enum):
     """Status of a cancellation event"""
+
     OPEN = "open"
     FILLED = "filled"
     EXPIRED = "expired"
@@ -56,6 +54,7 @@ class CancellationStatus(str, enum.Enum):
 
 class OfferState(str, enum.Enum):
     """State of an individual offer"""
+
     PENDING = "pending"
     ACCEPTED = "accepted"
     DECLINED = "declined"
@@ -66,12 +65,14 @@ class OfferState(str, enum.Enum):
 
 class MessageDirection(str, enum.Enum):
     """Direction of SMS message"""
+
     OUTBOUND = "outbound"
     INBOUND = "inbound"
 
 
 class MessageStatus(str, enum.Enum):
     """Twilio message delivery status"""
+
     QUEUED = "queued"
     SENT = "sent"
     DELIVERED = "delivered"
@@ -88,9 +89,10 @@ class MessageStatus(str, enum.Enum):
 class PatientContact(Base):
     """
     Minimal patient contact information for SMS communication.
-    
+
     HIPAA Note: Store only essential data, no diagnoses or full medical records.
     """
+
     __tablename__ = "patient_contact"
 
     id = Column(Integer, primary_key=True)
@@ -100,12 +102,20 @@ class PatientContact(Base):
     opt_out = Column(Boolean, default=False, nullable=False)
     consent_source = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     # Relationships
-    waitlist_entries = relationship("WaitlistEntry", back_populates="patient", cascade="all, delete-orphan")
+    waitlist_entries = relationship(
+        "WaitlistEntry", back_populates="patient", cascade="all, delete-orphan"
+    )
     offers = relationship("Offer", back_populates="patient", cascade="all, delete-orphan")
-    filled_cancellations = relationship("CancellationEvent", back_populates="filled_by_patient", foreign_keys="CancellationEvent.filled_by_patient_id")
+    filled_cancellations = relationship(
+        "CancellationEvent",
+        back_populates="filled_by_patient",
+        foreign_keys="CancellationEvent.filled_by_patient_id",
+    )
 
     def __repr__(self):
         return f"<PatientContact(id={self.id}, phone={self.phone_e164}, opt_out={self.opt_out})>"
@@ -116,6 +126,7 @@ class ProviderReference(Base):
     Provider information for matching appointments to waitlist preferences.
     Can link to existing TPCCC provider database via external_provider_id.
     """
+
     __tablename__ = "provider_reference"
 
     id = Column(Integer, primary_key=True)
@@ -125,7 +136,9 @@ class ProviderReference(Base):
     external_provider_id = Column(Text)
     tags = Column(ARRAY(Text))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     # Relationships
     cancellation_events = relationship("CancellationEvent", back_populates="provider")
@@ -139,10 +152,13 @@ class WaitlistEntry(Base):
     Active waitlist entries with priority scoring and provider preferences.
     Priority score is recalculated periodically based on urgency, seniority, and appointment distance.
     """
+
     __tablename__ = "waitlist_entry"
 
     id = Column(Integer, primary_key=True)
-    patient_id = Column(Integer, ForeignKey("patient_contact.id", ondelete="CASCADE"), nullable=False, index=True)
+    patient_id = Column(
+        Integer, ForeignKey("patient_contact.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     provider_preference = Column(ARRAY(Text))
     provider_type_preference = Column(Text)
     current_appt_at = Column(DateTime(timezone=True))
@@ -153,7 +169,9 @@ class WaitlistEntry(Base):
     priority_score = Column(Integer)
     notes = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     # Constraints
     __table_args__ = (
@@ -172,31 +190,45 @@ class CancellationEvent(Base):
     Tracks canceled appointment slots and their fill status.
     Triggers offer orchestration when created.
     """
+
     __tablename__ = "cancellation_event"
 
     id = Column(Integer, primary_key=True)
-    provider_id = Column(Integer, ForeignKey("provider_reference.id", ondelete="SET NULL"), index=True)
+    provider_id = Column(
+        Integer, ForeignKey("provider_reference.id", ondelete="SET NULL"), index=True
+    )
     location = Column(Text, nullable=False)
     slot_start_at = Column(DateTime(timezone=True), nullable=False, index=True)
     slot_end_at = Column(DateTime(timezone=True), nullable=False)
     reason = Column(Text)
-    status = Column(Enum(CancellationStatus, name="cancellation_status", values_callable=lambda obj: [e.value for e in obj]), default=CancellationStatus.OPEN, nullable=False, index=True)
+    status = Column(
+        Enum(
+            CancellationStatus,
+            name="cancellation_status",
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
+        default=CancellationStatus.OPEN,
+        nullable=False,
+        index=True,
+    )
     notes = Column(Text)
     created_by_staff_id = Column(Integer)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
     filled_at = Column(DateTime(timezone=True))
     filled_by_patient_id = Column(Integer, ForeignKey("patient_contact.id", ondelete="SET NULL"))
 
     # Constraints
-    __table_args__ = (
-        CheckConstraint("slot_end_at > slot_start_at", name="valid_slot_times"),
-    )
+    __table_args__ = (CheckConstraint("slot_end_at > slot_start_at", name="valid_slot_times"),)
 
     # Relationships
     provider = relationship("ProviderReference", back_populates="cancellation_events")
     offers = relationship("Offer", back_populates="cancellation", cascade="all, delete-orphan")
-    filled_by_patient = relationship("PatientContact", back_populates="filled_cancellations", foreign_keys=[filled_by_patient_id])
+    filled_by_patient = relationship(
+        "PatientContact", back_populates="filled_cancellations", foreign_keys=[filled_by_patient_id]
+    )
 
     def __repr__(self):
         return f"<CancellationEvent(id={self.id}, status={self.status}, slot_start={self.slot_start_at})>"
@@ -208,20 +240,32 @@ class Offer(Base):
     Tracks batch number, hold timers, and response status.
     Uses lock_token for race-safe confirmation (SELECT FOR UPDATE).
     """
+
     __tablename__ = "offer"
 
     id = Column(Integer, primary_key=True)
-    cancellation_id = Column(Integer, ForeignKey("cancellation_event.id", ondelete="CASCADE"), nullable=False, index=True)
-    patient_id = Column(Integer, ForeignKey("patient_contact.id", ondelete="CASCADE"), nullable=False, index=True)
+    cancellation_id = Column(
+        Integer, ForeignKey("cancellation_event.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    patient_id = Column(
+        Integer, ForeignKey("patient_contact.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     batch_number = Column(Integer, nullable=False)
     offer_sent_at = Column(DateTime(timezone=True))
     hold_expires_at = Column(DateTime(timezone=True), index=True)
-    state = Column(Enum(OfferState, name="offer_state", values_callable=lambda obj: [e.value for e in obj]), default=OfferState.PENDING, nullable=False, index=True)
+    state = Column(
+        Enum(OfferState, name="offer_state", values_callable=lambda obj: [e.value for e in obj]),
+        default=OfferState.PENDING,
+        nullable=False,
+        index=True,
+    )
     lock_token = Column(PG_UUID(as_uuid=True), default=uuid4, nullable=False, unique=True)
     accepted_at = Column(DateTime(timezone=True))
     declined_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     # Relationships
     cancellation = relationship("CancellationEvent", back_populates="offers")
@@ -236,26 +280,41 @@ class MessageLog(Base):
     """
     Complete audit trail of all SMS messages (inbound and outbound).
     Stores Twilio delivery status and raw webhook payloads.
-    
+
     HIPAA Note: Avoid including PHI in message bodies.
     """
+
     __tablename__ = "message_log"
 
     id = Column(Integer, primary_key=True)
     offer_id = Column(Integer, ForeignKey("offer.id", ondelete="SET NULL"), index=True)
-    direction = Column(Enum(MessageDirection, name="message_direction", values_callable=lambda obj: [e.value for e in obj]), nullable=False, index=True)
+    direction = Column(
+        Enum(
+            MessageDirection,
+            name="message_direction",
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
+        nullable=False,
+        index=True,
+    )
     from_phone = Column(Text, nullable=False, index=True)
     to_phone = Column(Text, nullable=False, index=True)
     body = Column(Text, nullable=False)
     twilio_sid = Column(Text, index=True)
-    status = Column(Enum(MessageStatus, name="message_status", values_callable=lambda obj: [e.value for e in obj]))
+    status = Column(
+        Enum(
+            MessageStatus, name="message_status", values_callable=lambda obj: [e.value for e in obj]
+        )
+    )
     error_code = Column(Integer)
     error_message = Column(Text)
     received_at = Column(DateTime(timezone=True))
     sent_at = Column(DateTime(timezone=True))
     delivered_at = Column(DateTime(timezone=True))
     raw_meta = Column(JSONB)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
 
     # Relationships
     offer = relationship("Offer", back_populates="messages")
@@ -269,6 +328,7 @@ class StaffUser(Base):
     Staff users for admin dashboard access.
     Future: Add authentication and role-based access control.
     """
+
     __tablename__ = "staff_user"
 
     id = Column(Integer, primary_key=True)
@@ -276,7 +336,9 @@ class StaffUser(Base):
     role = Column(Text, default="staff", nullable=False)
     active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     def __repr__(self):
         return f"<StaffUser(id={self.id}, email={self.email}, role={self.role})>"
@@ -290,10 +352,10 @@ class StaffUser(Base):
 def create_all_tables(engine):
     """
     Create all tables defined in this module.
-    
+
     Args:
         engine: SQLAlchemy engine instance
-        
+
     Example:
         >>> from sqlalchemy import create_engine
         >>> engine = create_engine("postgresql://...")
@@ -305,9 +367,9 @@ def create_all_tables(engine):
 def drop_all_tables(engine):
     """
     Drop all tables defined in this module.
-    
+
     WARNING: This will delete all data!
-    
+
     Args:
         engine: SQLAlchemy engine instance
     """

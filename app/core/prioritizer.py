@@ -16,7 +16,6 @@ Author: Jonathan Ives (@dollythedog)
 """
 
 from datetime import datetime
-from typing import List, Optional
 
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
@@ -25,12 +24,12 @@ from app.infra.models import WaitlistEntry
 from utils.time_utils import now_utc
 
 
-def calculate_priority_score(entry: WaitlistEntry, current_time: Optional[datetime] = None) -> int:
+def calculate_priority_score(entry: WaitlistEntry, current_time: datetime | None = None) -> int:
     """
     Compute priority score for a waitlist entry.
-    
+
     Higher score = higher priority for receiving cancellation offers.
-    
+
     Scoring breakdown:
     - Urgent flag: +30 points
     - Manual boost: 0-40 points (staff override)
@@ -40,14 +39,14 @@ def calculate_priority_score(entry: WaitlistEntry, current_time: Optional[dateti
         - 30-89 days: +5 points
         - <30 days: 0 points
     - Waitlist seniority: +1 point per 30 days (max 10 points)
-    
+
     Args:
         entry: WaitlistEntry ORM object
         current_time: Override current time (for testing)
-        
+
     Returns:
         int: Priority score (0-100 range typically)
-        
+
     Example:
         >>> entry = WaitlistEntry(
         ...     urgent_flag=True,
@@ -61,18 +60,18 @@ def calculate_priority_score(entry: WaitlistEntry, current_time: Optional[dateti
     """
     score = 0
     now = current_time or now_utc()
-    
+
     # Component 1: Urgent flag (+30)
     if entry.urgent_flag:
         score += 30
-    
+
     # Component 2: Manual boost (0-40)
     score += entry.manual_boost
-    
+
     # Component 3: Days until current appointment (0-20)
     if entry.current_appt_at:
         days_until = (entry.current_appt_at - now).days
-        
+
         if days_until >= 180:
             score += 20
         elif days_until >= 90:
@@ -80,27 +79,29 @@ def calculate_priority_score(entry: WaitlistEntry, current_time: Optional[dateti
         elif days_until >= 30:
             score += 5
         # else: 0 points
-    
+
     # Component 4: Waitlist seniority (0-10)
     days_on_waitlist = (now - entry.joined_at).days
     seniority_points = min(days_on_waitlist // 30, 10)
     score += seniority_points
-    
+
     return score
 
 
-def update_priority_score(entry: WaitlistEntry, session: Session, current_time: Optional[datetime] = None) -> int:
+def update_priority_score(
+    entry: WaitlistEntry, session: Session, current_time: datetime | None = None
+) -> int:
     """
     Calculate and update the priority score for a single waitlist entry.
-    
+
     Args:
         entry: WaitlistEntry ORM object
         session: SQLAlchemy session
         current_time: Override current time (for testing)
-        
+
     Returns:
         int: New priority score
-        
+
     Example:
         >>> session = get_session()
         >>> entry = session.query(WaitlistEntry).filter_by(id=123).first()
@@ -115,16 +116,16 @@ def update_priority_score(entry: WaitlistEntry, session: Session, current_time: 
 def update_all_priority_scores(session: Session, active_only: bool = True) -> int:
     """
     Recalculate priority scores for all waitlist entries.
-    
+
     This should be run periodically (e.g., hourly) to keep scores current.
-    
+
     Args:
         session: SQLAlchemy session
         active_only: Only update active entries (default: True)
-        
+
     Returns:
         int: Number of entries updated
-        
+
     Example:
         >>> session = get_session()
         >>> count = update_all_priority_scores(session)
@@ -132,37 +133,37 @@ def update_all_priority_scores(session: Session, active_only: bool = True) -> in
         >>> print(f"Updated {count} waitlist entries")
     """
     query = session.query(WaitlistEntry)
-    
+
     if active_only:
         query = query.filter(WaitlistEntry.active == True)
-    
+
     entries = query.all()
     current_time = now_utc()
-    
+
     for entry in entries:
         entry.priority_score = calculate_priority_score(entry, current_time)
-    
+
     return len(entries)
 
 
 def get_prioritized_waitlist(
     session: Session,
-    limit: Optional[int] = None,
+    limit: int | None = None,
     active_only: bool = True,
-    exclude_patient_ids: Optional[List[int]] = None,
-) -> List[WaitlistEntry]:
+    exclude_patient_ids: list[int] | None = None,
+) -> list[WaitlistEntry]:
     """
     Get waitlist entries sorted by priority score (highest first).
-    
+
     Args:
         session: SQLAlchemy session
         limit: Maximum number of entries to return
         active_only: Only return active entries (default: True)
         exclude_patient_ids: Patient IDs to exclude (e.g., already offered)
-        
+
     Returns:
         List[WaitlistEntry]: Sorted waitlist entries
-        
+
     Example:
         >>> session = get_session()
         >>> top_patients = get_prioritized_waitlist(session, limit=10)
@@ -170,41 +171,40 @@ def get_prioritized_waitlist(
         ...     print(f"{entry.patient.display_name}: {entry.priority_score}")
     """
     query = session.query(WaitlistEntry)
-    
+
     if active_only:
         query = query.filter(WaitlistEntry.active == True)
-    
+
     if exclude_patient_ids:
         query = query.filter(WaitlistEntry.patient_id.notin_(exclude_patient_ids))
-    
+
     # Order by priority score (highest first), then by joined_at (oldest first)
     query = query.order_by(
-        WaitlistEntry.priority_score.desc().nulls_last(),
-        WaitlistEntry.joined_at.asc()
+        WaitlistEntry.priority_score.desc().nulls_last(), WaitlistEntry.joined_at.asc()
     )
-    
+
     if limit:
         query = query.limit(limit)
-    
+
     return query.all()
 
 
 def get_eligible_patients_for_cancellation(
     session: Session,
     cancellation_id: int,
-    provider_id: Optional[int] = None,
-    provider_type: Optional[str] = None,
-    limit: Optional[int] = None,
-    exclude_patient_ids: Optional[List[int]] = None,
-) -> List[WaitlistEntry]:
+    provider_id: int | None = None,
+    provider_type: str | None = None,
+    limit: int | None = None,
+    exclude_patient_ids: list[int] | None = None,
+) -> list[WaitlistEntry]:
     """
     Get eligible waitlist entries for a specific cancellation, filtered by preferences.
-    
+
     This function applies provider matching logic:
     - If patient has provider_preference, match against provider_id
     - If patient has provider_type_preference, match against provider_type
     - If patient has "Any" preference, include them
-    
+
     Args:
         session: SQLAlchemy session
         cancellation_id: ID of the cancellation event
@@ -212,10 +212,10 @@ def get_eligible_patients_for_cancellation(
         provider_type: Provider type (e.g., "MD/DO", "APP")
         limit: Maximum number of entries to return
         exclude_patient_ids: Patient IDs to exclude
-        
+
     Returns:
         List[WaitlistEntry]: Eligible patients sorted by priority
-        
+
     Example:
         >>> session = get_session()
         >>> eligible = get_eligible_patients_for_cancellation(
@@ -227,17 +227,15 @@ def get_eligible_patients_for_cancellation(
         ... )
     """
     from app.infra.models import ProviderReference
-    
+
     query = session.query(WaitlistEntry).filter(WaitlistEntry.active == True)
-    
+
     # Exclude opted-out patients
-    query = query.join(WaitlistEntry.patient).filter(
-        WaitlistEntry.patient.has(opt_out=False)
-    )
-    
+    query = query.join(WaitlistEntry.patient).filter(WaitlistEntry.patient.has(opt_out=False))
+
     if exclude_patient_ids:
         query = query.filter(WaitlistEntry.patient_id.notin_(exclude_patient_ids))
-    
+
     # Provider preference matching logic
     # This is simplified - in production, you might want more sophisticated matching
     if provider_id:
@@ -249,45 +247,41 @@ def get_eligible_patients_for_cancellation(
             # 3. Have provider in their preference list
             # 4. Have no preferences set
             query = query.filter(
-                (WaitlistEntry.provider_type_preference == "Any") |
-                (WaitlistEntry.provider_type_preference == provider.provider_type) |
-                (WaitlistEntry.provider_type_preference.is_(None)) |
-                (WaitlistEntry.provider_preference.contains([provider.provider_name]))
+                (WaitlistEntry.provider_type_preference == "Any")
+                | (WaitlistEntry.provider_type_preference == provider.provider_type)
+                | (WaitlistEntry.provider_type_preference.is_(None))
+                | (WaitlistEntry.provider_preference.contains([provider.provider_name]))
             )
-    
+
     # Order by priority
     query = query.order_by(
-        WaitlistEntry.priority_score.desc().nulls_last(),
-        WaitlistEntry.joined_at.asc()
+        WaitlistEntry.priority_score.desc().nulls_last(), WaitlistEntry.joined_at.asc()
     )
-    
+
     if limit:
         query = query.limit(limit)
-    
+
     return query.all()
 
 
 def boost_patient_priority(
-    session: Session,
-    patient_id: int,
-    boost_amount: int,
-    reason: Optional[str] = None
-) -> Optional[WaitlistEntry]:
+    session: Session, patient_id: int, boost_amount: int, reason: str | None = None
+) -> WaitlistEntry | None:
     """
     Apply a manual boost to a patient's priority score.
-    
+
     Args:
         session: SQLAlchemy session
         patient_id: Patient ID
         boost_amount: Amount to boost (0-40)
         reason: Optional reason for audit trail
-        
+
     Returns:
         WaitlistEntry: Updated entry, or None if not found
-        
+
     Raises:
         ValueError: If boost_amount is out of range
-        
+
     Example:
         >>> session = get_session()
         >>> entry = boost_patient_priority(session, patient_id=123, boost_amount=20)
@@ -295,19 +289,18 @@ def boost_patient_priority(
     """
     if not (0 <= boost_amount <= 40):
         raise ValueError("Boost amount must be between 0 and 40")
-    
-    entry = session.query(WaitlistEntry).filter(
-        and_(
-            WaitlistEntry.patient_id == patient_id,
-            WaitlistEntry.active == True
-        )
-    ).first()
-    
+
+    entry = (
+        session.query(WaitlistEntry)
+        .filter(and_(WaitlistEntry.patient_id == patient_id, WaitlistEntry.active == True))
+        .first()
+    )
+
     if not entry:
         return None
-    
+
     entry.manual_boost = boost_amount
-    
+
     if reason:
         # Append to notes
         timestamp = now_utc().strftime("%Y-%m-%d %H:%M UTC")
@@ -316,8 +309,8 @@ def boost_patient_priority(
             entry.notes += f"\n{note}"
         else:
             entry.notes = note
-    
+
     # Recalculate priority score
     update_priority_score(entry, session)
-    
+
     return entry

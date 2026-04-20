@@ -9,7 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+*Slice 2026-04-08-01 closed 2026-04-19 after 1 revise attempt; all 8 Build Packet acceptance checks satisfied; WBS APP-01 / APP-02 / TST-03 marked Done on the Design Schematic. 35 pre-existing ruff findings logged to ISSUES.md (3 as severity=bug, 32 as cleanup) for triage in their owning slices (APP-03 / APP-04 / APP-08 / data-layer refactor).*
+
+### Added — Build slice 2026-04-08-01 (Config Foundation, WBS APP-01 / APP-02 / TST-03)
+- Explicit `validate_settings()` startup gate in `app/infra/settings.py`,
+  invoked from the FastAPI lifespan hook; missing required environment
+  variables now fail loudly with a clean stderr message naming the missing
+  keys and pointing at `.env.example`
+- `.env.example` relocated to the repo root with exact key parity to the
+  `Settings` class; legacy `configs/.env.example` removed to prevent drift
+- `scripts/migrations/env.py` (Alembic) now reads the validated
+  `DATABASE_URL` from `app.infra.settings` instead of ad-hoc
+  `os.getenv` + `load_dotenv("configs/.env")`; closes the last
+  config-read seam outside the `Settings` class
+- `tests/test_settings.py` covering: required-field non-defaulted invariant,
+  `ValidationError` on missing required env vars, loud stderr error from
+  `validate_settings()`, clean instantiation when required env present, and
+  repo-root `.env.example` ↔ `Settings` class key parity
+- `tests/conftest.py` providing test-safe defaults via
+  `os.environ.setdefault` so module-level `Settings()` succeeds during
+  pytest collection; individual tests exercising missing-env behavior
+  clear these via `monkeypatch.delenv` + `_env_file=None`
+- README Configuration section updated to point at root `.env.example`,
+  document the four required keys, and explain the startup validation gate;
+  Project Structure tree updated to remove stale `configs/.env.example`
+  entry and surface the new root-level `.env.example` and `pyproject.toml`
+- `ruff>=0.6.0` added to `requirements.txt` (prerequisite for the slice's
+  lint acceptance checks)
+- Minimal `pyproject.toml` created with `[tool.ruff]`, `[tool.ruff.lint]`,
+  `[tool.ruff.format]`, and `[tool.pytest.ini_options]` sections; build /
+  packaging metadata deferred to QA-01
+- `DECISIONS.md` created at repo root capturing (a) deferral of the
+  Streamlit auth secret from APP-01 to APP-08, (b) deliberate redundancy
+  of module-level `Settings()` with explicit `validate_settings()`, and
+  (c) Windows-mount null-byte write-path mitigation
+
+### Added — Documentation (not part of Build slice 2026-04-08-01)
+*The two entries below describe prior uncommitted documentation work
+that was sitting in the working tree when this slice landed. They are
+listed separately so Build Packet scope attribution stays clean. Commit
+them as their own change or promote them under a dated release entry
+when convenient.*
 - Executive presentation enhancements (docs/executive_presentation.html)
   - Table of contents slide with clickable navigation blocks
   - Fragment grey-out animation (previous items fade when new ones appear)

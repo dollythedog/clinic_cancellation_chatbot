@@ -156,9 +156,11 @@ class OfferOrchestrator:
             self.session.flush()  # Get offer ID
 
             # Format SMS message
+            provider_name = cancellation.provider.provider_name if cancellation.provider else "Provider"
             message_body = format_initial_offer(
                 slot_time=cancellation.slot_start_at,
                 location=cancellation.location,
+                provider_name=provider_name,
                 hold_minutes=self.hold_minutes,
             )
 
@@ -279,8 +281,11 @@ class OfferOrchestrator:
         logger.info(f"✅ Patient {patient.id} claimed slot {cancellation.id}")
 
         # Send confirmation message
+        provider_name = cancellation.provider.provider_name if cancellation.provider else "Provider"
         response = format_acceptance_winner(
-            slot_time=cancellation.slot_start_at, location=cancellation.location
+            slot_time=cancellation.slot_start_at,
+            location=cancellation.location,
+            provider_name=provider_name,
         )
         twilio_client.send_sms(to=from_phone, body=response)
         self._log_message(
@@ -322,10 +327,29 @@ class OfferOrchestrator:
         )
 
         if offer:
+            cancellation_id = offer.cancellation_id
             offer.state = OfferState.DECLINED
             offer.declined_at = now_utc()
             self.session.commit()
             logger.info(f"Patient {patient.id} declined offer {offer.id}")
+
+            # Check if all offers in current batch are resolved
+            cancellation = self.session.query(CancellationEvent).filter_by(id=cancellation_id).first()
+            if cancellation and cancellation.status == CancellationStatus.OPEN:
+                current_batch = max([o.batch_number for o in cancellation.offers])
+                current_batch_offers = [o for o in cancellation.offers if o.batch_number == current_batch]
+
+                all_resolved = all(
+                    o.state in [OfferState.ACCEPTED, OfferState.DECLINED, OfferState.EXPIRED]
+                    for o in current_batch_offers
+                )
+
+                # If all offers in batch are resolved, immediately send next batch
+                if all_resolved:
+                    logger.info(f"All offers in batch {current_batch} resolved, sending next batch immediately")
+                    offers_sent = self.send_next_batch(cancellation_id)
+                    if offers_sent > 0:
+                        logger.info(f"Sent {offers_sent} offer(s) in next batch")
 
         from app.core.templates import format_decline_response
 
@@ -411,60 +435,4 @@ class OfferOrchestrator:
             patient = offer.patient
             message = format_cancellation_notification(offer.id)
 
-            try:
-                twilio_client.send_sms(to=patient.phone_e164, body=message)
-                self._log_message(
-                    offer_id=offer.id,
-                    direction=MessageDirection.OUTBOUND,
-                    from_phone=settings.TWILIO_PHONE_NUMBER,
-                    to_phone=patient.phone_e164,
-                    body=message,
-                    status=MessageStatus.SENT,
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to send cancellation notification to patient {patient.id}: {e}"
-                )
-
-        self.session.commit()
-
-    def _mark_cancellation_expired(self, cancellation_id: int):
-        """Mark a cancellation as expired (no more eligible patients)"""
-        cancellation = self.session.query(CancellationEvent).filter_by(id=cancellation_id).first()
-        if cancellation:
-            cancellation.status = CancellationStatus.EXPIRED
-            self.session.commit()
-            logger.info(f"Cancellation {cancellation_id} marked as expired")
-
-    def _log_message(
-        self,
-        offer_id: int | None,
-        direction: MessageDirection,
-        from_phone: str,
-        to_phone: str,
-        body: str,
-        twilio_sid: str | None = None,
-        status: MessageStatus | None = None,
-        error_code: int | None = None,
-        error_message: str | None = None,
-    ):
-        """Log a message to the database"""
-        log = MessageLog(
-            offer_id=offer_id,
-            direction=direction,
-            from_phone=from_phone,
-            to_phone=to_phone,
-            body=body,
-            twilio_sid=twilio_sid,
-            status=status,
-            error_code=error_code,
-            error_message=error_message,
-            sent_at=now_utc() if direction == MessageDirection.OUTBOUND else None,
-            received_at=now_utc() if direction == MessageDirection.INBOUND else None,
-        )
-        self.session.add(log)
-
-    def _get_status_callback_url(self) -> str:
-        """Generate Twilio status callback URL"""
-        base_url = settings.TWILIO_WEBHOOK_BASE_URL
-        return f"{base_url}/twilio/status"
+          

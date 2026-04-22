@@ -9,7 +9,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+*Slice 2026-04-20-02 closed 2026-04-20 after 1 revise attempt; all 11 Build Packet acceptance checks satisfied; WBS APP-05 / APP-06 marked Done on the Design Schematic. Iteration 1 progress: 5 / 38 WBS items closed. 23 pre-existing `ruff format --check` failures on untouched files logged to ISSUES.md as `RUFF-FORMAT-BASELINE-23` for QA-01 attention; ruff-check baseline count reconciled from 35 (reported) to 39 (actual) during evaluation.*
+
 *Slice 2026-04-08-01 closed 2026-04-19 after 1 revise attempt; all 8 Build Packet acceptance checks satisfied; WBS APP-01 / APP-02 / TST-03 marked Done on the Design Schematic. 35 pre-existing ruff findings logged to ISSUES.md (3 as severity=bug, 32 as cleanup) for triage in their owning slices (APP-03 / APP-04 / APP-08 / data-layer refactor).*
+
+### Added — Build slice 2026-04-20-02 (Structured Logging Backbone + Offer-Flow Instrumentation, WBS APP-05 / APP-06)
+- `app/infra/logging_config.py` — central `configure_logging()` entry
+  point that installs the structlog-based JSON logging backbone:
+  rotating file handler at `settings.LOG_FILE`
+  (`LOG_MAX_BYTES` / `LOG_BACKUP_COUNT` drive rotation), a stderr
+  stream handler for dev visibility, and a conditional
+  `NTEventLogHandler` for ERROR-level events on Windows hosts with
+  `pywin32` available (graceful no-op elsewhere). Idempotent across
+  repeated calls. Processor chain stamps every record with
+  timezone-aware UTC timestamp, logger name, level, and exception info
+- `app.main.lifespan` now calls `configure_logging()` as the first
+  startup step so every subsequent event — including
+  `validate_settings()` failures — routes through the structured JSON
+  pipeline operators will see in production
+- All eight previously stdlib-logging modules migrated to
+  `structlog.get_logger(__name__)`: `app/main.py`, `app/infra/settings.py`,
+  `app/infra/twilio_client.py`, `app/core/orchestrator.py`,
+  `app/core/scheduler.py`, `app/api/sms_webhook.py`,
+  `app/api/status_webhook.py`, `app/api/admin.py`
+- Twilio-call path in `app/infra/twilio_client.py` emits structured
+  events only — no `logger.info(f"…")` f-strings remain. Every
+  `send_sms` and `get_message_status` call path (mock, disabled, sent,
+  api_error, exception) logs `event`, `outcome`, `message_sid`, and
+  a last-4-digit `to_phone_mask`; full phone numbers and message
+  bodies never appear as log fields
+- Offer / confirmation / expiry DB-write sites in
+  `app/core/orchestrator.py` emit structured events with the canonical
+  `event` / `patient_id` / `slot_id` / `outcome` field set
+  (`offer.sent`, `offer.accepted`, `offer.declined`, `offer.expired`,
+  `offer.expired_on_acceptance`, `offer.send_failed`,
+  `offer.batch_dispatch`, `offer.batch_continuation`,
+  `cancellation.processing`, `cancellation.not_found`,
+  `cancellation.state_mismatch`, `cancellation.no_eligible_patients`,
+  `acceptance.slot_unavailable`, `acceptance.unknown_sender`,
+  `acceptance.no_pending_offer`)
+- Scheduler tick outcomes in `app/core/scheduler.py` emit
+  `scheduler.expired_holds.tick` / `.error` and
+  `scheduler.priority_recalc.completed` / `.disabled` / `.error`
+  events
+- Inbound-SMS flow in `app/api/sms_webhook.py` emits structured events
+  for received messages, STOP/HELP keywords, YES/NO responses, and
+  error paths, all using `from_phone_mask` (never full E.164) and
+  never carrying the message body
+- Status-callback flow in `app/api/status_webhook.py` emits structured
+  `twilio.status_callback.*` events for received / delivered / failed
+  / sid_not_found / unknown_status
+- `tests/test_logging_config.py` covering: rotating-file-handler
+  installation, idempotence of `configure_logging`, round-trip of
+  representative Twilio-call and offer-flow events (required fields +
+  timezone-aware timestamp), a PHI-guardrail test that asserts patient
+  name / full phone / DOB / reply body never leak into serialized
+  events, and a log-level override test proving DEBUG/INFO are
+  suppressed when `LOG_LEVEL=WARNING`
+- README `Logging` section added covering log path, rotation policy,
+  structured-field vocabulary, the `patient_id`-only PHI rule, and how
+  to tail
+- `DECISIONS.md` entry documenting the structlog + JSON + Windows
+  Event Log decision and the "no PHI beyond patient_id" rule
+- `pywin32; sys_platform == 'win32'` added to `requirements.txt` as a
+  Windows-only conditional dependency for the Event Log sink;
+  non-Windows developers install the rest of the stack unchanged
 
 ### Added — Build slice 2026-04-08-01 (Config Foundation, WBS APP-01 / APP-02 / TST-03)
 - Explicit `validate_settings()` startup gate in `app/infra/settings.py`,

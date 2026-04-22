@@ -9,9 +9,9 @@ Includes:
 Author: Jonathan Ives (@dollythedog)
 """
 
-import logging
 from datetime import datetime
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -28,7 +28,7 @@ from app.infra.models import (
 )
 from utils.time_utils import now_utc
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -119,7 +119,12 @@ async def create_cancellation(
             "created_by_staff_id": 1
         }
     """
-    logger.info(f"Creating cancellation: {cancellation.location} at {cancellation.slot_start_at}")
+    logger.info(
+        "cancellation.create_requested",
+        location=cancellation.location,
+        slot_start_at=cancellation.slot_start_at.isoformat(),
+        provider_id=cancellation.provider_id,
+    )
 
     # Validate times
     if cancellation.slot_end_at <= cancellation.slot_start_at:
@@ -153,13 +158,23 @@ async def create_cancellation(
     db.commit()
     db.refresh(event)
 
-    logger.info(f"✅ Cancellation {event.id} created")
+    logger.info(
+        "cancellation.created",
+        cancellation_id=event.id,
+        provider_id=event.provider_id,
+        outcome="created",
+    )
 
     # Trigger offer orchestration
     orchestrator = OfferOrchestrator(db)
     offers_sent = orchestrator.process_new_cancellation(event.id)
 
-    logger.info(f"📨 Sent {offers_sent} initial offers for cancellation {event.id}")
+    logger.info(
+        "cancellation.initial_offers_dispatched",
+        cancellation_id=event.id,
+        offers_sent=offers_sent,
+        outcome="dispatched" if offers_sent else "no_candidates",
+    )
 
     return CancellationResponse(
         id=event.id,

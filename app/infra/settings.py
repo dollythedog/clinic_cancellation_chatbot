@@ -15,13 +15,19 @@ clean error message naming the missing keys.
 Author: Jonathan Ives (@dollythedog)
 """
 
-import logging
 import sys
 
+import structlog
 from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-logger = logging.getLogger(__name__)
+# NOTE: This module is imported very early in the startup sequence —
+# before ``configure_logging()`` has installed the structured backbone.
+# structlog.get_logger() is safe to call at import time; any events
+# emitted before configure_logging runs pass through structlog's
+# default stderr factory. After configure_logging runs, subsequent
+# events route through the full JSON pipeline.
+logger = structlog.get_logger(__name__)
 
 
 class Settings(BaseSettings):
@@ -210,7 +216,12 @@ def validate_settings() -> "Settings":
         return Settings()
     except ValidationError as exc:
         message = _format_missing_error(exc)
-        logger.error(message)
+        missing_keys = [str(err["loc"][0]) for err in exc.errors() if err.get("type") == "missing"]
+        logger.error(
+            "settings.validation_failed",
+            missing_required=missing_keys,
+            message=message,
+        )
         # Also write to stderr so the failure is visible even before
         # logging handlers are fully configured.
         sys.stderr.write("\n" + message + "\n\n")

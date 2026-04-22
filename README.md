@@ -323,6 +323,88 @@ The Streamlit dashboard provides real-time visibility into:
 
 ---
 
+## 📝 Logging
+
+The application uses **structlog** layered on Python's stdlib `logging`
+to emit structured JSON events. Every module obtains its logger the
+same way:
+
+```python
+import structlog
+logger = structlog.get_logger(__name__)
+```
+
+The logging backbone is installed exactly once at FastAPI startup by
+`configure_logging()` in `app/infra/logging_config.py` (invoked from
+the lifespan hook). Do not call `logging.basicConfig` or configure
+per-module handlers elsewhere.
+
+### Destinations
+
+| Sink | Purpose | Level |
+|---|---|---|
+| Rotating JSON file (`LOG_FILE`, default `data/logs/app.log`) | Audit of record; rotates at `LOG_MAX_BYTES` with `LOG_BACKUP_COUNT` backups | `LOG_LEVEL` |
+| `stderr` stream | Developer visibility during local runs | `LOG_LEVEL` |
+| Windows Event Log (`NTEventLogHandler` via `pywin32`) | Error-level alerts on the production Windows server | `ERROR` |
+
+On non-Windows hosts (and Windows hosts without `pywin32`), the Event
+Log sink is a graceful no-op and the rest of the pipeline is unchanged.
+
+For the production server, set in `.env`:
+
+```
+LOG_LEVEL=INFO
+LOG_FILE=C:\ProgramData\CancellationBot\logs\app.log
+LOG_MAX_BYTES=52428800          # 50 MB per the Design Schematic
+LOG_BACKUP_COUNT=10
+```
+
+### Structured fields
+
+Every event is a JSON object with at minimum a timezone-aware UTC
+`timestamp`, a `level`, a `logger` name, and a short `event` key.
+Offer-flow and Twilio-call events additionally carry a canonical set
+of identifiers and an `outcome`:
+
+| Field | Meaning |
+|---|---|
+| `event` | Short dotted event name, e.g. `offer.accepted`, `twilio.send_sms.sent` |
+| `patient_id` | Integer patient primary key (see PHI rule below) |
+| `slot_id` / `cancellation_id` | The cancellation / slot being offered |
+| `offer_id` | The individual offer row |
+| `message_sid` | Twilio message SID (for Twilio-call and status-callback events) |
+| `to_phone_mask` / `from_phone_mask` | Last-4-digit mask of a phone number, e.g. `***0199` |
+| `outcome` | Short keyword summarizing the result: `sent`, `accepted`, `declined`, `expired`, `api_error`, … |
+
+### PHI rule
+
+Log fields carry **`patient_id` only** as a patient identifier. Patient
+names, full E.164 phone numbers, dates of birth, and free-text reply
+bodies are **never** written to log fields. The `message_log` database
+table is the audit source of truth for full message content. This rule
+is enforced both by code convention (`_mask_phone()` helper in
+`app/infra/twilio_client.py`) and by a dedicated test in
+`tests/test_logging_config.py`.
+
+See `DECISIONS.md` for the full rationale.
+
+### Tailing the log
+
+On the production Windows server:
+
+```powershell
+Get-Content C:\ProgramData\CancellationBot\logs\app.log -Tail 50 -Wait
+```
+
+Or pipe to `jq` on any system with a Python-capable terminal:
+
+```powershell
+Get-Content C:\ProgramData\CancellationBot\logs\app.log -Tail 200 | `
+    ForEach-Object { $_ | python -c "import sys,json; print(json.loads(sys.stdin.read())['event'])" }
+```
+
+---
+
 ## 🧪 Testing
 
 ```powershell

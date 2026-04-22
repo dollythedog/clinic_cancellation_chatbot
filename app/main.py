@@ -7,9 +7,9 @@ Handles SMS webhooks, admin API, and orchestration logic.
 Author: Jonathan Ives (@dollythedog)
 """
 
-import logging
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -18,49 +18,60 @@ from app.api.sms_webhook import router as sms_router
 from app.api.status_webhook import router as status_router
 from app.core.scheduler import init_scheduler, shutdown_scheduler
 from app.infra.db import check_db_connection
+from app.infra.logging_config import configure_logging
 from app.infra.settings import settings, validate_settings
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+# NOTE: Do NOT call logging.basicConfig here. The structlog-based
+# backbone is installed by configure_logging(), which is invoked from
+# the FastAPI lifespan hook so validation failures are emitted through
+# the same structured pipeline operators will see in production.
+logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Lifespan context manager for startup/shutdown events.
+
+    Order of operations is deliberate:
+    1. ``configure_logging()`` installs the structured-logging backbone
+       so every subsequent startup message is captured as JSON.
+    2. ``validate_settings()`` gates startup on required env vars.
+    3. DB connection probe emits a structured ``db.startup_probe`` event.
+    4. Scheduler initializes and emits its own startup events.
     """
-    # Startup
-    logger.info("🚀 Starting Clinic Cancellation Chatbot...")
+    # Install the structured logging backbone FIRST so every startup
+    # message is captured in the canonical JSON form.
+    configure_logging()
+
+    logger.info("app.startup.begin", app_name=settings.APP_NAME, version=settings.APP_VERSION)
 
     # Explicit configuration validation gate. Raises ValidationError and
     # aborts startup if any required environment variable is missing.
     validate_settings()
-    logger.info("✅ Configuration validated")
+    logger.info("app.startup.config_validated")
 
     # Check database connection
     if check_db_connection():
-        logger.info("✅ Database connection successful")
+        logger.info("db.startup_probe", outcome="connected")
     else:
-        logger.error("❌ Database connection failed")
+        logger.error("db.startup_probe", outcome="failed")
 
     # Initialize scheduler
     init_scheduler()
-    logger.info("✅ Scheduler initialized")
+    logger.info("app.startup.scheduler_ready")
 
-    logger.info("✅ Application started successfully")
+    logger.info("app.startup.complete")
 
     yield
 
     # Shutdown
-    logger.info("🛑 Shutting down application...")
+    logger.info("app.shutdown.begin")
 
     # Shutdown scheduler
     shutdown_scheduler()
 
-    logger.info("✅ Application shutdown complete")
+    logger.info("app.shutdown.complete")
 
 
 # Create FastAPI application
@@ -110,7 +121,7 @@ app.include_router(admin_router)  # Prefix: /admin
 app.include_router(sms_router)  # Prefix: /sms
 app.include_router(status_router)  # Prefix: /twilio
 
-logger.info("✅ API routers registered")
+logger.info("app.routers_registered", routers=["admin", "sms", "twilio"])
 
 
 if __name__ == "__main__":

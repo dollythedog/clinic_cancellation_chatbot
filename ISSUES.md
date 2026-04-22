@@ -182,6 +182,48 @@ Total: **35 findings** across 6 files. Grouped by rule + owning slice.
 
 *The 35 findings reconcile exactly with ruff's reported count. F821 entries are cross-listed under BUG-001 above for severity-tracking purposes.*
 
+### Slice 2 baseline reconciliation (2026-04-20)
+
+During Build Slice 2026-04-20-02 evaluation (Revise Attempt 0), the ruff-check finding count came in at **39**, not the 35 reported at Slice 1 close. No new findings were introduced by the Slice-2 code; the delta is pure counting drift in Slice 1's closeout. The per-rule corrections:
+
+| Rule | Slice 1 count | Actual | Delta | Note |
+|---|---|---|---|---|
+| B008 | 8 | 8 | 0 | accurate |
+| E712 | 14 | 15 | +1 | one extra hit in `dashboard/app.py` (the 11th dashboard finding) |
+| UP042 | 4 | 4 | 0 | accurate |
+| E402 | 5 | 4 | −1 | `scripts/test_all_messages.py` has 3 hits, not 4 — Slice 1 double-counted |
+| F821 | 3 | 3 | 0 | accurate (BUG-001 cross-listed) |
+| F841 | 1 | 4 | +3 | additional pre-existing hits at `app/core/orchestrator.py:528` (`patient`), `app/core/orchestrator.py:529` (`message`), and `scripts/seed_test_real.py:132` (`patients`). The two orchestrator hits are in the dangling incomplete body of `_cancel_other_offers` on HEAD; the `seed_test_real.py` hit is a trivial unused local. |
+| **Total** | **35** | **39** | **+4** | |
+
+Ownership disposition for the newly-surfaced items:
+- `orchestrator.py:528-529` (F841 × 2) → APP-07 or a dedicated `_cancel_other_offers` completion slice (the function body is incomplete on HEAD; those two locals will be used once the SMS-notification send path is finished)
+- `seed_test_real.py:132` (F841 × 1) → QA-01 (trivial delete)
+- `dashboard/app.py` 11th E712 → APP-08 (the dashboard-findings group grows from 10 to 11; per-file ignore disposition unchanged)
+
+### RUFF-FORMAT-BASELINE-23 (2026-04-20)
+
+**Finding:** `ruff format . --check` reports 23 files would be reformatted. All 23 are in files untouched by Slice 2. The ten files authored or edited by Slice 2 (`app/main.py`, `app/infra/settings.py`, `app/infra/logging_config.py`, `app/infra/twilio_client.py`, `app/core/orchestrator.py`, `app/core/scheduler.py`, `app/api/admin.py`, `app/api/sms_webhook.py`, `app/api/status_webhook.py`, `tests/test_logging_config.py`) all report as "already formatted."
+
+**Affected files (23):**
+`app/api/__init__.py`, `app/core/__init__.py`, `app/core/prioritizer.py`, `app/core/templates.py`, `app/infra/__init__.py`, `app/infra/db.py`, `app/infra/models.py`, `dashboard/app.py`, `scripts/create_test_cancellation.py`, `scripts/direct_test.py`, `scripts/log_note.py`, `scripts/migrations/env.py`, `scripts/process_latest_cancellation.py`, `scripts/seed_sample_data.py`, `scripts/seed_test_real.py`, `scripts/setup_db.py`, `scripts/simulate_response.py`, `scripts/test_all_messages.py`, `tasks.py`, `tests/conftest.py`, `tests/test_settings.py`, `utils/__init__.py`, `utils/time_utils.py`.
+
+**Classification:** Pre-existing formatting drift. Slice 1's closeout claimed "31 files already formatted" — that claim was either mistaken or the ruff version drifted between sessions. Slice 2 did not introduce any of these failures; they are all in files Slice 2 did not edit.
+
+**Suggested fix:** One line — `ruff format .` — in a scoped QA slice. Not appropriate to carry in a behavior slice.
+
+**Owning slice:** **QA-01** (quality-automation hardening). Natural companion to the existing ruff-check baseline triage.
+
+### RUFF-ORDER-SWAP (2026-04-20) — import-order sensitivity of mechanical logger swaps
+
+**Finding:** Slice 2 swapped `import logging` → `import structlog` across 8 files. The initial `ruff check .` at Stage 3 reported 75 errors; after `ruff check --fix` it reported 39 (back to the Slice-1 baseline). The 36-error delta that `--fix` absorbed was almost certainly auto-fixable I-rule (import ordering) and UP-rule (pyupgrade) violations introduced by the mechanical swaps.
+
+**Classification:** Process improvement, not a code defect. Acceptance check 8 (`ruff check .` passes with no new violations) is evaluated against the post-fix state and passed.
+
+**Suggested fix:** Add a note to `DECISIONS.md` or to the build-execution skill that future mechanical-swap slices (import replacements, library migrations) should run `ruff check --fix && ruff format .` during execution rather than leaving the cleanup for the evaluate gate.
+
+**Owning slice:** Optional — may be folded into QA-01 or a DECISIONS.md addition with the other Slice-2 baseline reconciliations. Not blocking.
+
 ---
 
 ## 💡 Enhancements

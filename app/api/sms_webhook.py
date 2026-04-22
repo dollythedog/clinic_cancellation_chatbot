@@ -9,8 +9,7 @@ This endpoint receives inbound SMS from patients via Twilio and processes:
 Author: Jonathan Ives (@dollythedog)
 """
 
-import logging
-
+import structlog
 from fastapi import APIRouter, Depends, Form, Request, Response
 from sqlalchemy.orm import Session
 
@@ -23,10 +22,14 @@ from app.core.templates import (
 )
 from app.infra.db import get_db_dependency
 from app.infra.models import MessageDirection, MessageLog, MessageStatus, PatientContact
-from app.infra.twilio_client import twilio_client
+from app.infra.twilio_client import _mask_phone, twilio_client
 from utils.time_utils import now_utc
 
-logger = logging.getLogger(__name__)
+# PHI discipline: every structured log event on these webhook paths
+# uses ``from_phone_mask`` (last-4 digits) rather than the full E.164
+# number, and NEVER includes the message body. The ``message_log``
+# table is the audit source of truth for the full content.
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/sms", tags=["SMS Webhooks"])
 
@@ -62,7 +65,13 @@ async def handle_inbound_sms(
     to_phone = To
     message_body = Body.strip()
 
-    logger.info(f"📩 Inbound SMS from {from_phone}: {message_body}")
+    logger.info(
+        "sms.inbound.received",
+        from_phone_mask=_mask_phone(from_phone),
+        message_sid=MessageSid,
+        body_length=len(message_body),
+        outcome="received",
+    )
 
     # Log inbound message
     log_entry = MessageLog(
@@ -98,13 +107,25 @@ async def handle_inbound_sms(
         return handle_no_response(from_phone, message_body, db)
 
     # Unknown message - send error response
-    logger.warning(f"Unknown message from {from_phone}: {message_body}")
+    logger.warning(
+        "sms.inbound.unparseable",
+        from_phone_mask=_mask_phone(from_phone),
+        message_sid=MessageSid,
+        body_length=len(message_body),
+        outcome="unparseable",
+    )
     response_text = format_error_response()
 
     try:
         twilio_client.send_sms(to=from_phone, body=response_text)
     except Exception as e:
-        logger.error(f"Failed to send error response to {from_phone}: {e}")
+        logger.error(
+            "sms.error_response.send_failed",
+            from_phone_mask=_mask_phone(from_phone),
+            error_type=e.__class__.__name__,
+            error_message=str(e),
+            outcome="send_failed",
+        )
 
     # Return empty TwiML response
     return Response(
@@ -119,7 +140,11 @@ def handle_opt_out(from_phone: str, db: Session) -> Response:
 
     TCPA Compliance: STOP must immediately opt patient out.
     """
-    logger.info(f"🛑 STOP received from {from_phone}")
+    logger.info(
+        "sms.opt_out.received",
+        from_phone_mask=_mask_phone(from_phone),
+        outcome="received",
+    )
 
     # Find or create patient
     patient = db.query(PatientContact).filter_by(phone_e164=from_phone).first()
@@ -127,13 +152,23 @@ def handle_opt_out(from_phone: str, db: Session) -> Response:
     if patient:
         patient.opt_out = True
         db.commit()
-        logger.info(f"Patient {patient.id} opted out")
+        logger.info(
+            "sms.opt_out.patient_marked",
+            patient_id=patient.id,
+            from_phone_mask=_mask_phone(from_phone),
+            outcome="opted_out",
+        )
     else:
         # Create patient record with opt-out flag
         patient = PatientContact(phone_e164=from_phone, opt_out=True, consent_source="opt-out")
         db.add(patient)
         db.commit()
-        logger.info(f"Created opted-out patient record for {from_phone}")
+        logger.info(
+            "sms.opt_out.patient_created",
+            patient_id=patient.id,
+            from_phone_mask=_mask_phone(from_phone),
+            outcome="opted_out_new",
+        )
 
     # Send confirmation
     response_text = format_stop_response()
@@ -154,7 +189,13 @@ def handle_opt_out(from_phone: str, db: Session) -> Response:
         db.commit()
 
     except Exception as e:
-        logger.error(f"Failed to send STOP confirmation to {from_phone}: {e}")
+        logger.error(
+            "sms.opt_out.confirmation_failed",
+            from_phone_mask=_mask_phone(from_phone),
+            error_type=e.__class__.__name__,
+            error_message=str(e),
+            outcome="confirmation_failed",
+        )
 
     return Response(
         content='<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
@@ -164,7 +205,11 @@ def handle_opt_out(from_phone: str, db: Session) -> Response:
 
 def handle_help_request(from_phone: str, db: Session) -> Response:
     """Handle HELP keyword - send instructions"""
-    logger.info(f"❓ HELP received from {from_phone}")
+    logger.info(
+        "sms.help.received",
+        from_phone_mask=_mask_phone(from_phone),
+        outcome="received",
+    )
 
     response_text = format_help_response()
 
@@ -184,7 +229,13 @@ def handle_help_request(from_phone: str, db: Session) -> Response:
         db.commit()
 
     except Exception as e:
-        logger.error(f"Failed to send HELP response to {from_phone}: {e}")
+        logger.error(
+            "sms.help.response_failed",
+            from_phone_mask=_mask_phone(from_phone),
+            error_type=e.__class__.__name__,
+            error_message=str(e),
+            outcome="response_failed",
+        )
 
     return Response(
         content='<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
@@ -194,15 +245,27 @@ def handle_help_request(from_phone: str, db: Session) -> Response:
 
 def handle_yes_response(from_phone: str, message_body: str, db: Session) -> Response:
     """Handle YES response - attempt to claim slot"""
-    logger.info(f"✅ YES received from {from_phone}")
+    logger.info(
+        "sms.acceptance.received",
+        from_phone_mask=_mask_phone(from_phone),
+        outcome="received",
+    )
 
     orchestrator = OfferOrchestrator(db)
     success, response_text = orchestrator.handle_patient_acceptance(from_phone, message_body)
 
     if success:
-        logger.info(f"🎉 Slot successfully claimed by {from_phone}")
+        logger.info(
+            "sms.acceptance.claimed",
+            from_phone_mask=_mask_phone(from_phone),
+            outcome="claimed",
+        )
     else:
-        logger.info(f"❌ Slot claim failed for {from_phone}: {response_text}")
+        logger.info(
+            "sms.acceptance.claim_failed",
+            from_phone_mask=_mask_phone(from_phone),
+            outcome="claim_failed",
+        )
 
     # Response already sent by orchestrator
     return Response(
@@ -213,7 +276,11 @@ def handle_yes_response(from_phone: str, message_body: str, db: Session) -> Resp
 
 def handle_no_response(from_phone: str, message_body: str, db: Session) -> Response:
     """Handle NO response - decline offer"""
-    logger.info(f"❌ NO received from {from_phone}")
+    logger.info(
+        "sms.decline.received",
+        from_phone_mask=_mask_phone(from_phone),
+        outcome="received",
+    )
 
     orchestrator = OfferOrchestrator(db)
     success, response_text = orchestrator.handle_patient_decline(from_phone, message_body)
@@ -235,7 +302,13 @@ def handle_no_response(from_phone: str, message_body: str, db: Session) -> Respo
         db.commit()
 
     except Exception as e:
-        logger.error(f"Failed to send NO confirmation to {from_phone}: {e}")
+        logger.error(
+            "sms.decline.confirmation_failed",
+            from_phone_mask=_mask_phone(from_phone),
+            error_type=e.__class__.__name__,
+            error_message=str(e),
+            outcome="confirmation_failed",
+        )
 
     return Response(
         content='<?xml version="1.0" encoding="UTF-8"?><Response></Response>',

@@ -61,6 +61,11 @@ isort==5.12.0
 # Logging & Monitoring
 python-json-logger==2.0.7
 structlog==23.2.0
+# pywin32 enables the NTEventLogHandler used by app/infra/logging_config.py
+# on Windows production hosts. The marker keeps it off non-Windows installs
+# where the Event Log sink gracefully degrades to a no-op. Added for
+# Build Slice 2026-04-20-02 (WBS APP-05).
+pywin32>=306; sys_platform == 'win32'
 
 # Security
 cryptography==41.0.7

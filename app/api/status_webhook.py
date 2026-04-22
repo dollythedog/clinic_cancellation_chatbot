@@ -7,16 +7,16 @@ Updates message_log records with delivery status, error codes, etc.
 Author: Jonathan Ives (@dollythedog)
 """
 
-import logging
-
+import structlog
 from fastapi import APIRouter, Depends, Form, Request, Response
 from sqlalchemy.orm import Session
 
 from app.infra.db import get_db_dependency
 from app.infra.models import MessageLog
+from app.infra.twilio_client import _mask_phone
 from utils.time_utils import now_utc
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/twilio", tags=["Twilio Webhooks"])
 
@@ -57,13 +57,22 @@ async def handle_status_callback(
     Twilio Documentation:
     https://www.twilio.com/docs/sms/tutorials/how-to-confirm-delivery-python
     """
-    logger.info(f"📊 Status callback: {MessageSid} -> {MessageStatus}")
+    logger.info(
+        "twilio.status_callback.received",
+        message_sid=MessageSid,
+        twilio_status=MessageStatus,
+        outcome="received",
+    )
 
     # Find message log by Twilio SID
     message_log = db.query(MessageLog).filter_by(twilio_sid=MessageSid).first()
 
     if not message_log:
-        logger.warning(f"Message log not found for SID: {MessageSid}")
+        logger.warning(
+            "twilio.status_callback.sid_not_found",
+            message_sid=MessageSid,
+            outcome="sid_not_found",
+        )
         # Still return success to Twilio
         return Response(content="OK", status_code=200)
 
@@ -84,13 +93,24 @@ async def handle_status_callback(
         # Update delivered_at timestamp
         if new_status == MessageStatus.DELIVERED:
             message_log.delivered_at = now_utc()
-            logger.info(f"✅ Message {MessageSid} delivered to {To}")
+            logger.info(
+                "twilio.status_callback.delivered",
+                message_sid=MessageSid,
+                to_phone_mask=_mask_phone(To) if To else "<unknown>",
+                outcome="delivered",
+            )
 
         # Log errors
         if ErrorCode:
             message_log.error_code = int(ErrorCode)
             message_log.error_message = ErrorMessage
-            logger.error(f"❌ Message {MessageSid} failed: {ErrorCode} - {ErrorMessage}")
+            logger.error(
+                "twilio.status_callback.failed",
+                message_sid=MessageSid,
+                twilio_error_code=int(ErrorCode),
+                twilio_error_message=ErrorMessage,
+                outcome="failed",
+            )
 
         # Store raw metadata
         if not message_log.raw_meta:
@@ -107,7 +127,12 @@ async def handle_status_callback(
 
         db.commit()
     else:
-        logger.warning(f"Unknown status: {MessageStatus} for SID {MessageSid}")
+        logger.warning(
+            "twilio.status_callback.unknown_status",
+            message_sid=MessageSid,
+            twilio_status=MessageStatus,
+            outcome="unknown_status",
+        )
 
     return Response(content="OK", status_code=200)
 

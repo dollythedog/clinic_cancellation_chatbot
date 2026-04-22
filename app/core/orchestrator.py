@@ -11,8 +11,7 @@ This module coordinates the entire cancellation offer workflow:
 Author: Jonathan Ives (@dollythedog)
 """
 
-import logging
-
+import structlog
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
@@ -27,17 +26,21 @@ from app.infra.models import (
     CancellationEvent,
     CancellationStatus,
     MessageDirection,
-    MessageLog,
     MessageStatus,
     Offer,
     OfferState,
     PatientContact,
 )
 from app.infra.settings import settings
-from app.infra.twilio_client import twilio_client
+from app.infra.twilio_client import _mask_phone, twilio_client
 from utils.time_utils import add_minutes, now_utc
 
-logger = logging.getLogger(__name__)
+# PHI discipline (see DECISIONS.md): every structured log event emitted
+# by the offer/confirmation/expiry flow uses ``patient_id`` as the only
+# patient identifier. Phone numbers (``from_phone_mask``) are masked to
+# last-4 digits; message bodies NEVER appear as log fields — the
+# ``message_log`` table owns the audit of full content.
+logger = structlog.get_logger(__name__)
 
 
 class OfferOrchestrator:
@@ -80,16 +83,27 @@ class OfferOrchestrator:
         cancellation = self.session.query(CancellationEvent).filter_by(id=cancellation_id).first()
 
         if not cancellation:
-            logger.error(f"Cancellation {cancellation_id} not found")
+            logger.error(
+                "cancellation.not_found",
+                cancellation_id=cancellation_id,
+                outcome="not_found",
+            )
             return 0
 
         if cancellation.status != CancellationStatus.OPEN:
             logger.warning(
-                f"Cancellation {cancellation_id} is not open (status: {cancellation.status})"
+                "cancellation.state_mismatch",
+                cancellation_id=cancellation_id,
+                cancellation_status=str(cancellation.status),
+                outcome="not_open",
             )
             return 0
 
-        logger.info(f"Processing new cancellation {cancellation_id}")
+        logger.info(
+            "cancellation.processing",
+            cancellation_id=cancellation_id,
+            outcome="processing",
+        )
 
         # Send first batch
         return self.send_next_batch(cancellation_id)
@@ -127,12 +141,20 @@ class OfferOrchestrator:
         )
 
         if not eligible_entries:
-            logger.info(f"No more eligible patients for cancellation {cancellation_id}")
+            logger.info(
+                "cancellation.no_eligible_patients",
+                cancellation_id=cancellation_id,
+                outcome="no_candidates",
+            )
             self._mark_cancellation_expired(cancellation_id)
             return 0
 
         logger.info(
-            f"Sending batch {current_batch} ({len(eligible_entries)} offers) for cancellation {cancellation_id}"
+            "offer.batch_dispatch",
+            cancellation_id=cancellation_id,
+            batch_number=current_batch,
+            batch_size=len(eligible_entries),
+            outcome="dispatching",
         )
 
         # Create offers and send SMS
@@ -156,7 +178,9 @@ class OfferOrchestrator:
             self.session.flush()  # Get offer ID
 
             # Format SMS message
-            provider_name = cancellation.provider.provider_name if cancellation.provider else "Provider"
+            provider_name = (
+                cancellation.provider.provider_name if cancellation.provider else "Provider"
+            )
             message_body = format_initial_offer(
                 slot_time=cancellation.slot_start_at,
                 location=cancellation.location,
@@ -189,10 +213,28 @@ class OfferOrchestrator:
                 patient.last_contacted_at = now
 
                 count += 1
-                logger.info(f"Offer {offer.id} sent to patient {patient.id} ({patient.phone_e164})")
+                logger.info(
+                    "offer.sent",
+                    offer_id=offer.id,
+                    patient_id=patient.id,
+                    cancellation_id=cancellation_id,
+                    slot_id=cancellation_id,
+                    batch_number=current_batch,
+                    to_phone_mask=_mask_phone(patient.phone_e164),
+                    outcome="sent",
+                )
 
             except Exception as e:
-                logger.error(f"Failed to send offer to patient {patient.id}: {e}")
+                logger.error(
+                    "offer.send_failed",
+                    offer_id=offer.id,
+                    patient_id=patient.id,
+                    cancellation_id=cancellation_id,
+                    slot_id=cancellation_id,
+                    error_type=e.__class__.__name__,
+                    error_message=str(e),
+                    outcome="send_failed",
+                )
                 offer.state = OfferState.FAILED
 
         self.session.commit()
@@ -215,7 +257,11 @@ class OfferOrchestrator:
         patient = self.session.query(PatientContact).filter_by(phone_e164=from_phone).first()
 
         if not patient:
-            logger.warning(f"Received YES from unknown number: {from_phone}")
+            logger.warning(
+                "acceptance.unknown_sender",
+                from_phone_mask=_mask_phone(from_phone),
+                outcome="unknown_sender",
+            )
             return False, "Patient not found"
 
         # Find active pending offer for this patient
@@ -229,12 +275,23 @@ class OfferOrchestrator:
         )
 
         if not offer:
-            logger.warning(f"No pending offer found for patient {patient.id}")
+            logger.warning(
+                "acceptance.no_pending_offer",
+                patient_id=patient.id,
+                outcome="no_pending_offer",
+            )
             return False, "No active offer"
 
         # Check if offer has expired
         if now_utc() > offer.hold_expires_at:
-            logger.info(f"Offer {offer.id} expired for patient {patient.id}")
+            logger.info(
+                "offer.expired_on_acceptance",
+                offer_id=offer.id,
+                patient_id=patient.id,
+                cancellation_id=offer.cancellation_id,
+                slot_id=offer.cancellation_id,
+                outcome="expired_on_acceptance",
+            )
             offer.state = OfferState.EXPIRED
             self.session.commit()
             return False, "Offer expired"
@@ -249,7 +306,14 @@ class OfferOrchestrator:
 
         # Check if slot is still available
         if cancellation.status != CancellationStatus.OPEN:
-            logger.info(f"Slot {cancellation.id} no longer available")
+            logger.info(
+                "acceptance.slot_unavailable",
+                offer_id=offer.id,
+                patient_id=patient.id,
+                cancellation_id=cancellation.id,
+                slot_id=cancellation.id,
+                outcome="slot_unavailable",
+            )
             offer.state = OfferState.CANCELED
             self.session.commit()
 
@@ -278,7 +342,14 @@ class OfferOrchestrator:
 
         self.session.commit()
 
-        logger.info(f"✅ Patient {patient.id} claimed slot {cancellation.id}")
+        logger.info(
+            "offer.accepted",
+            offer_id=offer.id,
+            patient_id=patient.id,
+            cancellation_id=cancellation.id,
+            slot_id=cancellation.id,
+            outcome="accepted",
+        )
 
         # Send confirmation message
         provider_name = cancellation.provider.provider_name if cancellation.provider else "Provider"
@@ -331,13 +402,24 @@ class OfferOrchestrator:
             offer.state = OfferState.DECLINED
             offer.declined_at = now_utc()
             self.session.commit()
-            logger.info(f"Patient {patient.id} declined offer {offer.id}")
+            logger.info(
+                "offer.declined",
+                offer_id=offer.id,
+                patient_id=patient.id,
+                cancellation_id=cancellation_id,
+                slot_id=cancellation_id,
+                outcome="declined",
+            )
 
             # Check if all offers in current batch are resolved
-            cancellation = self.session.query(CancellationEvent).filter_by(id=cancellation_id).first()
+            cancellation = (
+                self.session.query(CancellationEvent).filter_by(id=cancellation_id).first()
+            )
             if cancellation and cancellation.status == CancellationStatus.OPEN:
                 current_batch = max([o.batch_number for o in cancellation.offers])
-                current_batch_offers = [o for o in cancellation.offers if o.batch_number == current_batch]
+                current_batch_offers = [
+                    o for o in cancellation.offers if o.batch_number == current_batch
+                ]
 
                 all_resolved = all(
                     o.state in [OfferState.ACCEPTED, OfferState.DECLINED, OfferState.EXPIRED]
@@ -346,10 +428,22 @@ class OfferOrchestrator:
 
                 # If all offers in batch are resolved, immediately send next batch
                 if all_resolved:
-                    logger.info(f"All offers in batch {current_batch} resolved, sending next batch immediately")
+                    logger.info(
+                        "offer.batch_resolved",
+                        cancellation_id=cancellation_id,
+                        slot_id=cancellation_id,
+                        batch_number=current_batch,
+                        outcome="advancing_batch",
+                    )
                     offers_sent = self.send_next_batch(cancellation_id)
                     if offers_sent > 0:
-                        logger.info(f"Sent {offers_sent} offer(s) in next batch")
+                        logger.info(
+                            "offer.batch_continuation",
+                            cancellation_id=cancellation_id,
+                            slot_id=cancellation_id,
+                            offers_sent=offers_sent,
+                            outcome="batch_sent",
+                        )
 
         from app.core.templates import format_decline_response
 
@@ -381,7 +475,14 @@ class OfferOrchestrator:
         # Mark expired offers
         for offer in expired_offers:
             offer.state = OfferState.EXPIRED
-            logger.info(f"Offer {offer.id} expired")
+            logger.info(
+                "offer.expired",
+                offer_id=offer.id,
+                patient_id=offer.patient_id,
+                cancellation_id=offer.cancellation_id,
+                slot_id=offer.cancellation_id,
+                outcome="expired",
+            )
 
         self.session.commit()
 
@@ -434,5 +535,3 @@ class OfferOrchestrator:
             # Send notification SMS
             patient = offer.patient
             message = format_cancellation_notification(offer.id)
-
-          

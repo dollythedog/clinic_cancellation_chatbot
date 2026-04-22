@@ -8,8 +8,7 @@ This module sets up scheduled jobs:
 Author: Jonathan Ives (@dollythedog)
 """
 
-import logging
-
+import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -18,7 +17,7 @@ from app.core.prioritizer import update_all_priority_scores
 from app.infra.db import session_scope
 from app.infra.settings import settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Global scheduler instance
 scheduler: AsyncIOScheduler | None = None
@@ -35,11 +34,20 @@ def check_expired_holds_job():
             orchestrator = OfferOrchestrator(session)
             batches_sent = orchestrator.check_expired_holds()
 
-            if batches_sent > 0:
-                logger.info(f"⏰ Expired holds check: Sent {batches_sent} new batches")
+            logger.info(
+                "scheduler.expired_holds.tick",
+                batches_sent=batches_sent,
+                outcome="dispatched" if batches_sent else "noop",
+            )
 
     except Exception as e:
-        logger.error(f"Error in check_expired_holds_job: {e}", exc_info=True)
+        logger.error(
+            "scheduler.expired_holds.error",
+            error_type=e.__class__.__name__,
+            error_message=str(e),
+            outcome="exception",
+            exc_info=True,
+        )
 
 
 def recalculate_priorities_job():
@@ -52,12 +60,25 @@ def recalculate_priorities_job():
         with session_scope() as session:
             if settings.ENABLE_PRIORITY_RECALC:
                 count = update_all_priority_scores(session, active_only=True)
-                logger.info(f"📊 Priority recalculation: Updated {count} entries")
+                logger.info(
+                    "scheduler.priority_recalc.completed",
+                    entries_updated=count,
+                    outcome="updated",
+                )
             else:
-                logger.debug("Priority recalculation disabled by settings")
+                logger.debug(
+                    "scheduler.priority_recalc.disabled",
+                    outcome="skipped_by_flag",
+                )
 
     except Exception as e:
-        logger.error(f"Error in recalculate_priorities_job: {e}", exc_info=True)
+        logger.error(
+            "scheduler.priority_recalc.error",
+            error_type=e.__class__.__name__,
+            error_message=str(e),
+            outcome="exception",
+            exc_info=True,
+        )
 
 
 def init_scheduler():

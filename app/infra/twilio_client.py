@@ -7,15 +7,35 @@ Supports both real Twilio API and mock mode for testing.
 Author: Jonathan Ives (@dollythedog)
 """
 
-import logging
-
 import requests
+import structlog
 from twilio.base.exceptions import TwilioRestException
 from twilio.rest import Client
 
 from app.infra.settings import settings
 
-logger = logging.getLogger(__name__)
+# Structured-logging discipline for this module:
+# - Every Twilio API call emits a structured event with at minimum
+#   ``event``, ``outcome``, and correlation context (``to_phone_mask``,
+#   ``message_sid``). No f-string logger calls remain on these paths.
+# - PHI rule: full ``to`` phone numbers are masked to last-4 digits
+#   (``to_phone_mask``) when recorded as log fields. Full numbers still
+#   live in the ``message_log`` table — the audit source of truth.
+logger = structlog.get_logger(__name__)
+
+
+def _mask_phone(phone: str) -> str:
+    """
+    Mask a phone number for structured log fields.
+
+    Returns the last four digits prefixed with ``***`` when the input
+    looks like a phone number, otherwise ``"<unknown>"``. The full
+    number remains in the ``message_log`` table; this helper exists so
+    log fields never carry a complete PHI-bearing phone number.
+    """
+    if not phone or len(phone) < 4:
+        return "<unknown>"
+    return "***" + phone[-4:]
 
 
 class TwilioClient:
@@ -40,7 +60,7 @@ class TwilioClient:
             self.from_number = settings.TWILIO_PHONE_NUMBER
             self.messaging_service_sid = settings.TWILIO_MESSAGING_SERVICE_SID
         else:
-            logger.info("Using mock Twilio client (no real SMS will be sent)")
+            logger.info("twilio.client.mock_mode_active", outcome="initialized")
             self.client = None
             self.from_number = "+15555551234"  # Mock number
             self.messaging_service_sid = None
@@ -70,8 +90,15 @@ class TwilioClient:
             >>> print(f"Message sent: {sid}")
         """
         if self.use_mock:
-            # Mock mode - log and optionally send to ntfy.sh
-            logger.info(f"[MOCK] SMS to {to}: {body}")
+            # Mock mode — emit a structured event only. The ``body``
+            # field is deliberately NOT included (PHI rule); the full
+            # message body is retained in the ``message_log`` table.
+            logger.info(
+                "twilio.send_sms.mock",
+                to_phone_mask=_mask_phone(to),
+                outcome="mock_sent",
+                body_length=len(body),
+            )
 
             # Send notification to webhook (e.g., ntfy.sh) if configured
             if hasattr(settings, "SLACK_WEBHOOK_URL") and settings.SLACK_WEBHOOK_URL:
@@ -80,7 +107,12 @@ class TwilioClient:
             return f"SM{to[-10:]}_mock"
 
         if not settings.ENABLE_SMS_SENDING:
-            logger.warning(f"SMS sending disabled. Would send to {to}: {body}")
+            logger.warning(
+                "twilio.send_sms.disabled",
+                to_phone_mask=_mask_phone(to),
+                outcome="skipped_disabled",
+                body_length=len(body),
+            )
             return None
 
         try:
@@ -104,18 +136,32 @@ class TwilioClient:
             message = self.client.messages.create(**message_params)
 
             logger.info(
-                f"SMS sent successfully. SID: {message.sid}, To: {to}, Status: {message.status}"
+                "twilio.send_sms.sent",
+                message_sid=message.sid,
+                to_phone_mask=_mask_phone(to),
+                twilio_status=message.status,
+                outcome="sent",
             )
 
             return message.sid
 
         except TwilioRestException as e:
             logger.error(
-                f"Twilio API error sending SMS to {to}. Error code: {e.code}, Message: {e.msg}"
+                "twilio.send_sms.api_error",
+                to_phone_mask=_mask_phone(to),
+                twilio_error_code=e.code,
+                twilio_error_message=e.msg,
+                outcome="api_error",
             )
             raise
         except Exception as e:
-            logger.error(f"Unexpected error sending SMS to {to}: {e}")
+            logger.error(
+                "twilio.send_sms.exception",
+                to_phone_mask=_mask_phone(to),
+                error_type=e.__class__.__name__,
+                error_message=str(e),
+                outcome="exception",
+            )
             raise
 
     def get_message_status(self, message_sid: str) -> dict | None:
@@ -134,7 +180,11 @@ class TwilioClient:
             >>> print(status["status"])  # delivered, failed, etc.
         """
         if self.use_mock:
-            logger.info(f"[MOCK] Get status for {message_sid}")
+            logger.info(
+                "twilio.get_message_status.mock",
+                message_sid=message_sid,
+                outcome="mock_delivered",
+            )
             return {
                 "sid": message_sid,
                 "status": "delivered",
@@ -144,6 +194,13 @@ class TwilioClient:
 
         try:
             message = self.client.messages(message_sid).fetch()
+
+            logger.info(
+                "twilio.get_message_status.fetched",
+                message_sid=message.sid,
+                twilio_status=message.status,
+                outcome="fetched",
+            )
 
             return {
                 "sid": message.sid,
@@ -155,10 +212,21 @@ class TwilioClient:
             }
 
         except TwilioRestException as e:
-            logger.error(f"Error fetching message {message_sid}: {e.msg}")
+            logger.error(
+                "twilio.get_message_status.api_error",
+                message_sid=message_sid,
+                twilio_error_message=e.msg,
+                outcome="api_error",
+            )
             return None
         except Exception as e:
-            logger.error(f"Unexpected error fetching message {message_sid}: {e}")
+            logger.error(
+                "twilio.get_message_status.exception",
+                message_sid=message_sid,
+                error_type=e.__class__.__name__,
+                error_message=str(e),
+                outcome="exception",
+            )
             return None
 
     def validate_phone_number(self, phone: str) -> bool:
@@ -250,16 +318,35 @@ class TwilioClient:
             )
 
             if response.status_code == 200:
-                logger.debug(f"Sent mock SMS notification to {webhook_url}")
+                logger.debug(
+                    "twilio.mock_notification.sent",
+                    to_phone_mask=_mask_phone(to),
+                    outcome="notified",
+                )
             else:
                 logger.warning(
-                    f"Failed to send notification: {response.status_code} {response.text}"
+                    "twilio.mock_notification.failed",
+                    to_phone_mask=_mask_phone(to),
+                    http_status=response.status_code,
+                    outcome="notify_failed",
                 )
 
         except requests.exceptions.RequestException as e:
-            logger.warning(f"Could not send mock notification: {e}")
+            logger.warning(
+                "twilio.mock_notification.request_error",
+                to_phone_mask=_mask_phone(to),
+                error_type=e.__class__.__name__,
+                error_message=str(e),
+                outcome="request_error",
+            )
         except Exception as e:
-            logger.error(f"Unexpected error sending mock notification: {e}")
+            logger.error(
+                "twilio.mock_notification.exception",
+                to_phone_mask=_mask_phone(to),
+                error_type=e.__class__.__name__,
+                error_message=str(e),
+                outcome="exception",
+            )
 
 
 # Global Twilio client instance

@@ -9,20 +9,22 @@ Creates:
 
 Author: Jonathan Ives (@dollythedog)
 """
-import sys
 import os
-from datetime import datetime, timedelta
+import sys
+from datetime import timedelta
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from app.core.prioritizer import calculate_priority_score
 from app.infra.db import get_session
 from app.infra.models import (
-    PatientContact, ProviderReference, WaitlistEntry,
-    CancellationEvent, CancellationStatus
+    CancellationEvent,
+    PatientContact,
+    ProviderReference,
+    WaitlistEntry,
 )
-from app.core.prioritizer import calculate_priority_score
-from utils.time_utils import now_utc, to_utc
+from utils.time_utils import now_utc
 
 
 def clear_existing_data(db):
@@ -134,8 +136,8 @@ def main():
             print("="*60)
             print("\nSummary:")
             print(f"  • Provider: Dr. Test Provider (ID: {provider.id})")
-            print(f"  • Jonathan: +18177743563")
-            print(f"  • Kylie: +18178887746")
+            print("  • Jonathan: +18177743563")
+            print("  • Kylie: +18178887746")
             print("\n📋 Next Steps:")
             print("  1. Start the API: make run-api")
             print("  2. Create a test cancellation via API")

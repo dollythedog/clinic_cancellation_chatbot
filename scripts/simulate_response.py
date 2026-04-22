@@ -4,21 +4,21 @@ Simulate SMS Response - Test patient acceptance workflow
 
 Simulates a patient replying YES/NO to an offer.
 """
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from app.infra.db import get_session
 from app.core.orchestrator import OfferOrchestrator
-from app.infra.models import MessageLog, MessageDirection, MessageStatus
+from app.infra.db import get_session
+from app.infra.models import MessageDirection, MessageLog, MessageStatus
 from utils.time_utils import now_utc
 
 
 def simulate_response(from_phone: str, response: str):
     """Simulate patient SMS response"""
     
-    print(f"📱 Simulating SMS response...\n")
+    print("📱 Simulating SMS response...\n")
     print(f"   From: {from_phone}")
     print(f"   Message: {response}\n")
     
@@ -46,7 +46,7 @@ def simulate_response(from_phone: str, response: str):
             
             if success:
                 print("✅ SUCCESS! Slot claimed!")
-                print(f"\n📨 Confirmation message sent:")
+                print("\n📨 Confirmation message sent:")
                 print(f"   '{reply}'\n")
                 
                 # Show database state

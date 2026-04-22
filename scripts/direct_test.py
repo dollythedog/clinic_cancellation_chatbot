@@ -4,17 +4,18 @@ Direct Test - Bypass API and test orchestration directly
 
 This bypasses the FastAPI layer to test orchestration directly.
 """
-import sys
 import os
+import sys
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import pytz
+
+from app.core.orchestrator import OfferOrchestrator
 from app.infra.db import get_session
 from app.infra.models import CancellationEvent, CancellationStatus
-from app.core.orchestrator import OfferOrchestrator
-from utils.time_utils import now_utc
-import pytz
+
 
 def main():
     print("🧪 Running direct orchestration test...\n")
@@ -51,9 +52,9 @@ def main():
             orchestrator = OfferOrchestrator(db)
             offers_sent = orchestrator.process_new_cancellation(cancellation.id)
             
-            print(f"\n✅ Orchestration complete!")
+            print("\n✅ Orchestration complete!")
             print(f"   Offers sent: {offers_sent}")
-            print(f"\n📱 CHECK YOUR PHONE for SMS from +18173919877")
+            print("\n📱 CHECK YOUR PHONE for SMS from +18173919877")
             
     except Exception as e:
         print(f"\n❌ Error: {e}")

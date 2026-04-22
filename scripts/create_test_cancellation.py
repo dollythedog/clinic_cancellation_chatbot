@@ -7,16 +7,15 @@ and triggers the orchestration workflow.
 
 Author: Jonathan Ives (@dollythedog)
 """
-import sys
 import os
+import sys
 from datetime import datetime, timedelta
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import requests
 import pytz
-from utils.time_utils import now_utc
+import requests
 
 
 def create_test_cancellation():
@@ -75,7 +74,7 @@ def create_test_cancellation():
             print("   4. Check database to verify state changes")
             
         else:
-            print(f"❌ Error creating cancellation:")
+            print("❌ Error creating cancellation:")
             print(f"   Status: {response.status_code}")
             print(f"   Response: {response.text}")
             

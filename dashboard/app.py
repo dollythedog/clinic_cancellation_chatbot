@@ -10,25 +10,35 @@ Real-time monitoring dashboard for staff to view:
 Author: Jonathan Ives (@dollythedog)
 """
 
-import streamlit as st
-from datetime import datetime, timedelta
-from sqlalchemy import desc, and_, or_
-from sqlalchemy.orm import Session
-import sys
 import os
+import sys
+from datetime import datetime, timedelta
+
+import streamlit as st
+from sqlalchemy import desc, or_
+from sqlalchemy.orm import Session
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.infra.db import get_session
 from app.infra.models import (
-    CancellationEvent, CancellationStatus,
-    WaitlistEntry, PatientContact, ProviderReference,
-    Offer, OfferState, MessageLog, MessageDirection
+    CancellationEvent,
+    CancellationStatus,
+    MessageDirection,
+    MessageLog,
+    Offer,
+    OfferState,
+    PatientContact,
+    ProviderReference,
+    WaitlistEntry,
 )
 from utils.time_utils import (
-    now_utc, to_local, format_timedelta, minutes_until, 
-    time_until, format_for_sms
+    format_for_sms,
+    format_timedelta,
+    minutes_until,
+    now_utc,
+    to_local,
 )
 
 # Page configuration
@@ -303,7 +313,7 @@ def show_cancellation_card(cancel: CancellationEvent, db: Session):
         action_col1, action_col2, action_col3 = st.columns([1, 1, 3])
         
         with action_col1:
-            if st.button(f"🗑️ Delete", key=f"delete_cancel_{cancel.id}", help="Permanently delete this cancellation"):
+            if st.button("🗑️ Delete", key=f"delete_cancel_{cancel.id}", help="Permanently delete this cancellation"):
                 try:
                     # Delete related offers and messages first
                     db.query(Offer).filter(Offer.cancellation_id == cancel.id).delete()
@@ -316,7 +326,7 @@ def show_cancellation_card(cancel: CancellationEvent, db: Session):
                     st.error(f"Error deleting: {e}")
         
         with action_col2:
-            if st.button(f"❌ Void", key=f"void_cancel_{cancel.id}", help="Mark as cancelled (no longer available)"):
+            if st.button("❌ Void", key=f"void_cancel_{cancel.id}", help="Mark as cancelled (no longer available)"):
                 try:
                     cancel.status = CancellationStatus.ABORTED
                     # Expire any pending offers
@@ -1207,7 +1217,7 @@ def show_photo_guide():
     presentation_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'docs', 'executive_presentation.html'))
     presentation_url = f"file:///{presentation_path.replace(os.sep, '/')}"
     
-    st.markdown(f"""
+    st.markdown("""
     ### 📋 Dynamic Image Gallery System
     
     The presentation has a **fully dynamic** image loading system. Just drop files into the `docs/images/` folder

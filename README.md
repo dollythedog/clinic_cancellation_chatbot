@@ -403,6 +403,32 @@ Get-Content C:\ProgramData\CancellationBot\logs\app.log -Tail 200 | `
     ForEach-Object { $_ | python -c "import sys,json; print(json.loads(sys.stdin.read())['event'])" }
 ```
 
+### Health endpoints
+
+Two unauthenticated HTTP probes complement the structured log so
+external monitors — Windows Task Scheduler (INF-04), NSSM service
+supervision, and future uptime probes — can answer liveness and
+readiness questions without credentials.
+
+| Endpoint | Purpose | 200 response body | 503 response body |
+|---|---|---|---|
+| `GET /healthz` | **Liveness** — the FastAPI process is alive. No database or Twilio calls. | `{"status": "ok", "service", "version", "timestamp"}` | — (never 503 on a live process) |
+| `GET /readyz` | **Readiness** — DB reachable (`SELECT 1` with a 2-second timeout) AND required Twilio settings populated. | `{"status": "ok", "checks": {"db": "ok", "twilio": "ok"}, …}` | `{"status": "fail", "checks": {"db": "fail"\|"ok", "twilio": "fail"\|"ok", "twilio_missing": ["NAMES_ONLY"]}, …}` |
+
+Both endpoints emit a structured event on every request (`event=health.check`
+for `/healthz`, `event=health.ready` for `/readyz`) carrying the outcome
+and per-sub-check status so the audit log can reconstruct probe history
+from `app.log` alone. Secret values are never included in response
+bodies or log events — only setting names.
+
+The Windows Task Scheduler health-check job polls `/healthz` every
+5 minutes per Design Schematic INF-04. Only a 503 (or no response)
+triggers the email + ntfy.sh alert path; `/readyz` is polled at the
+same cadence for richer status in the log stream.
+
+See `DECISIONS.md` for the unauthenticated-probes decision and the
+liveness-vs-readiness split rationale.
+
 ---
 
 ## 🧪 Testing
@@ -567,6 +593,29 @@ This is an internal TPCCC project. For questions or issues:
 * **Project Owner:** Jonathan Ives (@dollythedog)
 * **Email:** [Your email]
 * **GitHub:** https://github.com/dollythedog/clinic_cancellation_chatbot
+
+### Line-ending policy
+
+The repository declares a canonical end-of-line policy in
+[`.gitattributes`](.gitattributes) at the repo root:
+
+- `* text=auto eol=lf` — all text files use **LF** in the working tree
+  regardless of each contributor's global `core.autocrlf` setting.
+- `*.ps1 text eol=crlf` — PowerShell scripts retain **CRLF** (Windows
+  PowerShell interprets LF-only `.ps1` files unreliably).
+
+If you ever see a large cosmetic CRLF diff on a file you didn't mean to
+change, run the one-time recovery command once from the repo root:
+
+```bash
+git add --renormalize .
+git commit -m "Renormalize EOL per .gitattributes"
+```
+
+This brings the index and working tree back into agreement with the
+policy. See [`DECISIONS.md`](DECISIONS.md) (2026-04-23 entry) and
+[`ISSUES.md`](ISSUES.md) § `EOL-AUTOCRLF-ROOT-CAUSE` for the rationale
+and the 5-Whys diagnosis that motivated this policy.
 
 ---
 

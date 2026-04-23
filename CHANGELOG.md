@@ -9,9 +9,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Build slice 2026-04-23-04 (EOL Normalization, WBS QA-04)
+
+- `.gitattributes` — **created** at repo root. Declares the canonical
+  end-of-line policy for the repository: `* text=auto eol=lf` as the
+  default (all text files use LF in the working tree regardless of each
+  contributor's `core.autocrlf` setting) and `*.ps1 text eol=crlf` to
+  preserve CRLF on PowerShell scripts (`scripts/install_service.ps1`
+  and `scripts/update_server.ps1`). Header comment cross-references the
+  DECISIONS 2026-04-23 entry and the ISSUES `EOL-AUTOCRLF-ROOT-CAUSE`
+  5-Whys diagnosis that motivated this policy.
+- Repository-wide `git add --renormalize .` applied in the same
+  atomic commit to bring the existing 47-file `i/lf w/crlf` baseline
+  (RUFF-CRLF-BASELINE-47) into alignment with the new policy. After
+  the commit, `git ls-files --eol | grep "w/crlf"` returns only the
+  two `.ps1` files.
+- `README.md` — new **Line-ending policy** subsection under
+  `## 🤝 Contributing`. Explains the two `.gitattributes` rules, names
+  the one-time operator recovery command (`git add --renormalize .`
+  + follow-up commit) for contributors who hit drift, and points at
+  DECISIONS / ISSUES for the rationale.
+- `DECISIONS.md` — new **2026-04-23 — `.gitattributes` +
+  `git add --renormalize .`** entry documenting the rule set, the
+  binary-heuristic-trust-by-default stance (no preemptive `*.png
+  binary` markers — git's content detection handles the existing
+  PNG assets correctly), the PowerShell-CRLF rationale, and the
+  operator recovery procedure. Cross-references the 5-Whys chain.
+- `ISSUES.md` — `RUFF-CRLF-BASELINE-47` and `EOL-AUTOCRLF-ROOT-CAUSE`
+  moved to a new top-level `## ✅ Closed / Resolved Issues` section
+  with resolution notes pointing at Packet 2026-04-23-04.
+- Design Schematic `2026-04-07-Design-Schematic-workflow.md` — new
+  `QA-04` row added to §5 Quality Automation (Draft + Final WBS
+  tables) per the packet's Path A approval (description: "Add
+  repo-wide EOL policy (`.gitattributes`) and renormalize"; effort
+  1 h; deps none; iteration 1). build-closeout will append the
+  completion to §9 WBS Completion Log.
+
+No Python code changed; no tests added (repo-hygiene change, not a
+behavior change — verification is `git ls-files --eol | grep "w/crlf"`
+returning only `.ps1` files, which lives in the slice's validation
+commands block). No new dependencies.
+
+---
+
+*Slice 2026-04-21-03 closed 2026-04-23 after 1 revise attempt; all 15 Build Packet acceptance checks satisfied; WBS APP-07 marked Done on the Design Schematic. Iteration 1 progress: 6 / 38 WBS items closed. Revise Attempt 1 addressed three defects: (1) `/readyz` time-bound guard was broken under the initial `asyncio.wait_for + loop.run_in_executor` pattern (HTTP response blocked for the full duration of the sync call regardless of timeout) — fixed via `anyio.fail_after` wrapping `anyio.to_thread.run_sync(..., abandon_on_cancel=True)`; (2) CRLF scope-creep on README / CHANGELOG / DECISIONS docs normalized back to LF; (3) inline `ruff check --fix && ruff format` on slice-authored `.py` files promoted from lesson-learned to an execution-checklist item via new DECISIONS entry. Two new ISSUES entries logged for cross-slice follow-up: `RUFF-CRLF-BASELINE-47` (47 text files drift from LF → CRLF on every git operation) and `EOL-AUTOCRLF-ROOT-CAUSE` (5-Whys diagnosis; countermeasure is a dedicated EOL-Normalization slice adding `.gitattributes` at repo root with `* text=auto eol=lf`).*
+
 *Slice 2026-04-20-02 closed 2026-04-20 after 1 revise attempt; all 11 Build Packet acceptance checks satisfied; WBS APP-05 / APP-06 marked Done on the Design Schematic. Iteration 1 progress: 5 / 38 WBS items closed. 23 pre-existing `ruff format --check` failures on untouched files logged to ISSUES.md as `RUFF-FORMAT-BASELINE-23` for QA-01 attention; ruff-check baseline count reconciled from 35 (reported) to 39 (actual) during evaluation.*
 
 *Slice 2026-04-08-01 closed 2026-04-19 after 1 revise attempt; all 8 Build Packet acceptance checks satisfied; WBS APP-01 / APP-02 / TST-03 marked Done on the Design Schematic. 35 pre-existing ruff findings logged to ISSUES.md (3 as severity=bug, 32 as cleanup) for triage in their owning slices (APP-03 / APP-04 / APP-08 / data-layer refactor).*
+
+### Added — Build slice 2026-04-21-03 (Health & Readiness Endpoints, WBS APP-07)
+- `app/api/health.py` — new FastAPI `APIRouter` exposing two
+  unauthenticated probes at the root (no prefix):
+  - `GET /healthz` — **liveness** probe. Returns 200 with a small
+    JSON body (`status`, `service`, `version`, timezone-aware ISO
+    timestamp) whenever the process is alive. No database, Twilio,
+    or external I/O; liveness is strictly local.
+  - `GET /readyz` — **readiness** probe. Returns 200 when both
+    (a) a cheap `SELECT 1` against the shared SQLAlchemy engine
+    succeeds within `READYZ_DB_TIMEOUT_SECONDS` (2 s) and
+    (b) the three required Twilio settings
+    (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
+    `TWILIO_PHONE_NUMBER`) are non-empty on the validated settings
+    object. Returns 503 with a structured body naming the failing
+    sub-check(s) — and, when the Twilio sub-check fails, the missing
+    setting NAMES only (never values) — otherwise.
+- DB probe is time-bounded via `anyio.fail_after` wrapping
+  `anyio.to_thread.run_sync(..., abandon_on_cancel=True)`, so a hung
+  database produces a 503 within the configured timeout rather than a
+  hung HTTP response (the abandoned worker thread finishes in the
+  background, bounded by the DB driver's own timeout). The bound is a
+  module-level constant (`READYZ_DB_TIMEOUT_SECONDS`) that tests
+  override via `monkeypatch.setattr`. See DECISIONS.md 2026-04-23
+  entry for the rationale — the initial `asyncio.wait_for +
+  loop.run_in_executor` attempt could not abandon the blocking thread
+  and broke the probe's timeout contract.
+- Both endpoints emit structured events on every request via
+  `structlog.get_logger(__name__)`:
+  - `event=health.check` with `outcome=ok` for every `/healthz` call
+  - `event=health.ready` with `outcome` one of `ok`,
+    `db_unreachable`, `twilio_missing`, or
+    `db_unreachable_and_twilio_missing`, plus `db_status`,
+    `twilio_status`, `db_failure_reason` (exception class name only,
+    never the message), and `twilio_missing` (setting names only,
+    never values)
+- `app/main.py` registers the new router via the existing
+  `app.include_router(...)` pattern alongside admin / sms / status;
+  `app.routers_registered` startup event now includes `health` in its
+  `routers` list
+- `tests/test_health_endpoints.py` — 7 new test cases covering: the
+  router-registration contract, `/healthz` green path + event, the
+  four-quadrant `/readyz` matrix (DB ok × Twilio ok / DB fail × Twilio
+  ok / DB ok × Twilio missing / DB hang × Twilio ok), the time-bound
+  guarantee on the DB probe (sleeps 5 s, must return within 2.5 s),
+  and the "no secret values in logs" guardrail
+- README gains a Health endpoints subsection under Logging, documenting
+  both endpoints, their response shapes, and the Task Scheduler
+  polling cadence
+- DECISIONS.md gains an entry documenting the unauthenticated-health-
+  endpoints decision and the liveness-vs-readiness split
 
 ### Added — Build slice 2026-04-20-02 (Structured Logging Backbone + Offer-Flow Instrumentation, WBS APP-05 / APP-06)
 - `app/infra/logging_config.py` — central `configure_logging()` entry

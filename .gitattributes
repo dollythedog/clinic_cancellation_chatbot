@@ -1,0 +1,24 @@
+# =============================================================================
+# Repository EOL Policy — added by Build slice 2026-04-23-04 (WBS QA-04)
+# =============================================================================
+# See:
+#   DECISIONS.md 2026-04-23 — .gitattributes + git add --renormalize .
+#   ISSUES.md EOL-AUTOCRLF-ROOT-CAUSE (5-Whys diagnosis)
+#
+# Without this file, working-tree line endings depend on each contributor's
+# global `core.autocrlf` setting — producing recurring LF <-> CRLF drift when
+# contributors use different operating systems or editors (the defect that
+# surfaced Slice 3 / Packet 2026-04-21-03 Defect D2 and populated the
+# 47-file RUFF-CRLF-BASELINE-47 finding).
+# =============================================================================
+
+# Default: text files use LF in the working tree.
+# `text=auto` lets git detect text vs. binary via content heuristics;
+# `eol=lf` forces LF regardless of each contributor's core.autocrlf setting.
+* text=auto eol=lf
+
+# PowerShell scripts retain CRLF. Windows PowerShell can interpret LF-only
+# .ps1 files unreliably (older parser bugs around here-strings and
+# multi-line if/switch blocks). LF on *.ps1 is an explicit anti-goal;
+# see scripts/install_service.ps1 and scripts/update_server.ps1.
+*.ps1 text eol=crlf

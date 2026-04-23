@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.admin import router as admin_router
+from app.api.health import router as health_router
 from app.api.sms_webhook import router as sms_router
 from app.api.status_webhook import router as status_router
 from app.core.scheduler import init_scheduler, shutdown_scheduler
@@ -120,8 +121,9 @@ async def root():
 app.include_router(admin_router)  # Prefix: /admin
 app.include_router(sms_router)  # Prefix: /sms
 app.include_router(status_router)  # Prefix: /twilio
+app.include_router(health_router)  # No prefix — /healthz and /readyz are public probes
 
-logger.info("app.routers_registered", routers=["admin", "sms", "twilio"])
+logger.info("app.routers_registered", routers=["admin", "sms", "twilio", "health"])
 
 
 if __name__ == "__main__":

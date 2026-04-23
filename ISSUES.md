@@ -224,6 +224,54 @@ Ownership disposition for the newly-surfaced items:
 
 **Owning slice:** Optional — may be folded into QA-01 or a DECISIONS.md addition with the other Slice-2 baseline reconciliations. Not blocking.
 
+**Resolution:** Closed by Slice 3 DECISIONS.md entry `2026-04-23 — Promote inline ruff check --fix && ruff format to an execution-checklist item`. Build-execution's Suggested Validation Commands block now leads with inline ruff; Slice 3's Revise Attempt 1 honored the new rule (pre-handoff ruff reported "All checks passed! 3 files left unchanged").
+
+---
+
+## 📐 EOL & Repository Hygiene
+
+*No open issues in this category — the two entries previously listed here (`RUFF-CRLF-BASELINE-47` and `EOL-AUTOCRLF-ROOT-CAUSE`) were resolved by Build Slice 2026-04-23-04 (WBS QA-04). Their closed forms live under `## ✅ Closed / Resolved Issues` below.*
+
+---
+
+## ✅ Closed / Resolved Issues
+
+### RUFF-CRLF-BASELINE-47 (2026-04-23) — 47 text files drift LF → CRLF on every git operation
+
+**Status:** Closed — resolved by **Packet 2026-04-23-04 (Slice 4, WBS QA-04)** on 2026-04-23. The repo-wide `.gitattributes` + `git add --renormalize .` commit brought all 47 affected files into `i/lf w/lf` alignment. Post-commit verification: `git ls-files --eol | grep "w/crlf"` returns only the two deliberately-CRLF `.ps1` files (`scripts/install_service.ps1`, `scripts/update_server.ps1`).
+
+**Finding:** `git ls-files --eol` during Slice 3 Revise Attempt 1 identified **47 text files** with `i/lf w/crlf` drift in the working tree (repo index stored LF; working tree contained CRLF). Final `git diff --stat` on the four Slice-3-edited files surfaced the git warning: *"LF will be replaced by CRLF the next time Git touches it."* The warning confirmed the drift would recur on any `git checkout`, `git reset`, `git stash pop`, or similar operation that writes the file from index to working tree — making cosmetic one-off normalization insufficient.
+
+**Affected files (47):** `.env.dev`, `.env.example`, `.gitignore`, `ISSUES.md`, `Makefile`, `PROJECT_CHARTER.md`, `PROJECT_PLAN.md`, `WARP.md`, `alembic.ini`, `app/api/__init__.py`, `app/core/__init__.py`, `app/core/prioritizer.py`, `app/core/templates.py`, `app/infra/__init__.py`, `app/infra/db.py`, `app/infra/models.py`, `docker-compose.yml`, `docs/DASHBOARD_TESTING.md`, `docs/DEPLOYMENT.md`, `docs/MOCK_TESTING_GUIDE.md`, `docs/PRESENTATION_STYLE_GUIDE.md`, `docs/SESSION_SUMMARY.md`, `docs/TESTING_CHECKLIST.md`, `docs/executive_presentation.html`, `docs/images/README.md`, `pyproject.toml`, `requirements.txt`, `scripts/create_test_cancellation.py`, `scripts/direct_test.py`, `scripts/install_service.ps1`, `scripts/log_note.py`, `scripts/migrations/env.py`, `scripts/migrations/script.py.mako`, `scripts/process_latest_cancellation.py`, `scripts/quick_setup.sql`, `scripts/schema.sql`, `scripts/seed_sample_data.py`, `scripts/seed_test_real.py`, `scripts/setup_db.py`, `scripts/simulate_response.py`, `scripts/test_all_messages.py`, `scripts/update_server.ps1`, `tasks.py`, `tests/conftest.py`, `tests/test_settings.py`, `utils/__init__.py`, `utils/time_utils.py`.
+
+**Classification (at close):** Pre-existing repository-wide EOL drift exposed by Slice 3's large docs diffs. Not introduced by any single slice. Root cause diagnosed in companion entry `EOL-AUTOCRLF-ROOT-CAUSE` (also closed by this packet).
+
+**Resolution mechanism:** One-line repo-level policy file (`.gitattributes`) plus `git add --renormalize .` in a single atomic commit — exactly the countermeasure proposed in `EOL-AUTOCRLF-ROOT-CAUSE`. Per-file `dos2unix` was explicitly not the chosen approach (cosmetic only; does not survive subsequent git operations).
+
+---
+
+### EOL-AUTOCRLF-ROOT-CAUSE (2026-04-23) — 5-Whys diagnosis of recurring CRLF drift
+
+**Status:** Closed — resolved by **Packet 2026-04-23-04 (Slice 4, WBS QA-04)** on 2026-04-23. The proposed countermeasure (`.gitattributes` with `* text=auto eol=lf` + `*.ps1 text eol=crlf`, plus `git add --renormalize .`) was implemented verbatim. Recurrence is prevented by `.gitattributes` winning over each contributor's global `core.autocrlf` setting on every future checkout. The slice's DECISIONS.md entry documents the operator recovery procedure for any contributor who hits drift on a new workstation.
+
+**Finding:** 5-Whys RCA conducted during Slice 3 Revise Attempt 1 (see `1 - Projects/Cancellation Chatbot/` session notes for full worksheet). Diagnosis walked from the observable symptom (`git diff` showing spurious CRLF changes) to the systemic root cause (repo had no explicit EOL policy).
+
+**5-Whys chain (abbreviated):**
+
+1. *Why did `git diff` report EOL conversion as meaningful changes?* Because files were LF in the index but CRLF in the working tree.
+2. *Why was the working tree CRLF when the index was LF?* Because Windows git with `core.autocrlf=true` converts LF → CRLF on every checkout.
+3. *Why is `core.autocrlf=true` in effect?* Because the Git-for-Windows installer sets it as the global default, and the setting was never reconciled with the repo's implicit LF convention.
+4. *Why does the repo have no defense against each contributor's personal autocrlf?* Because there is no `.gitattributes` file declaring a canonical EOL policy.
+5. *Why was `.gitattributes` never added?* Because the repo was scaffolded as a solo Windows project; every contributor (of one) had identical autocrlf settings so drift was invisible, and EOL policy only became visible once diffs grew large (Slice 3) and multi-environment contributors (Claude agents writing via a Linux mount producing LF) joined.
+
+**Root cause statement:** *The repository lacks a `.gitattributes` file declaring a canonical EOL policy (`* text=auto eol=lf`), so working-tree EOL behavior is determined per-contributor by global `core.autocrlf` settings. Combined with Git-for-Windows' `autocrlf=true` default on the solo maintainer's workstation and multi-environment contributors writing with different EOL conventions, this produces recurring LF↔CRLF drift that pollutes `git diff` for any file the working tree has touched since its last LF-normalizing event.*
+
+**Countermeasure (implemented):** Added `.gitattributes` at the repo root containing `* text=auto eol=lf` plus `*.ps1 text eol=crlf` (for PowerShell scripts that genuinely need CRLF). Committed `.gitattributes` and immediately ran `git add --renormalize .` to bring the existing index in line. Measurable success: `git ls-files --eol | grep "w/crlf"` returns zero non-PS1 lines after the normalization commit — verified at evaluate time.
+
+**Entry criterion for every future slice (now enforced):** working tree has no `i/lf w/crlf` drift on files the slice will touch. If drift recurs on a new workstation, `git add --renormalize .` + a follow-up commit is the one-line operator recovery procedure (documented in `README.md` § Line-ending policy).
+
+**Why previous implicit "fixes" failed:** Slice 3's per-file dos2unix normalization was cosmetic — it corrected the working tree but survived only until the next `git checkout` (the `git diff --stat` warning *"LF will be replaced by CRLF the next time Git touches it"* was git telling us exactly this). A repo-level policy file was the only durable fix.
+
 ---
 
 ## 💡 Enhancements

@@ -12,13 +12,12 @@ Author: Jonathan Ives (@dollythedog)
 from datetime import datetime
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
 
 from app.core.orchestrator import OfferOrchestrator
 from app.core.prioritizer import boost_patient_priority, update_all_priority_scores
-from app.infra.db import get_db_dependency
+from app.infra.db import DbSession
 from app.infra.models import (
     CancellationEvent,
     CancellationStatus,
@@ -92,9 +91,7 @@ class PatientBoost(BaseModel):
 
 
 @router.post("/cancel", response_model=CancellationResponse, status_code=status.HTTP_201_CREATED)
-async def create_cancellation(
-    cancellation: CancellationCreate, db: Session = Depends(get_db_dependency)
-):
+async def create_cancellation(cancellation: CancellationCreate, db: DbSession):
     """
     Create a new cancellation event and trigger offer orchestration.
 
@@ -189,7 +186,7 @@ async def create_cancellation(
 
 
 @router.get("/cancellations/active")
-async def get_active_cancellations(db: Session = Depends(get_db_dependency)):
+async def get_active_cancellations(db: DbSession):
     """Get all active (open) cancellations"""
     cancellations = (
         db.query(CancellationEvent)
@@ -219,7 +216,7 @@ async def get_active_cancellations(db: Session = Depends(get_db_dependency)):
 
 
 @router.post("/waitlist", status_code=status.HTTP_201_CREATED)
-async def add_to_waitlist(entry: WaitlistEntryCreate, db: Session = Depends(get_db_dependency)):
+async def add_to_waitlist(entry: WaitlistEntryCreate, db: DbSession):
     """
     Add a patient to the waitlist.
 
@@ -286,9 +283,7 @@ async def add_to_waitlist(entry: WaitlistEntryCreate, db: Session = Depends(get_
 
 
 @router.post("/waitlist/{patient_id}/boost")
-async def boost_priority(
-    patient_id: int, boost: PatientBoost, db: Session = Depends(get_db_dependency)
-):
+async def boost_priority(patient_id: int, boost: PatientBoost, db: DbSession):
     """
     Manually boost a patient's priority on the waitlist.
 
@@ -323,7 +318,7 @@ async def boost_priority(
 
 
 @router.post("/waitlist/recalculate-priorities")
-async def recalculate_priorities(db: Session = Depends(get_db_dependency)):
+async def recalculate_priorities(db: DbSession):
     """
     Recalculate priority scores for all active waitlist entries.
 
@@ -338,7 +333,7 @@ async def recalculate_priorities(db: Session = Depends(get_db_dependency)):
 
 
 @router.get("/waitlist")
-async def get_waitlist(limit: int = 50, db: Session = Depends(get_db_dependency)):
+async def get_waitlist(db: DbSession, limit: int = 50):
     """Get prioritized waitlist (top patients)"""
     from app.core.prioritizer import get_prioritized_waitlist
 

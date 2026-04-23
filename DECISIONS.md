@@ -13,6 +13,36 @@ companion project-management folder at
 
 ## [Unreleased]
 
+### 2026-04-23 — Grandfathered ruff per-file ignores as the QA-01 gate-activation discipline
+
+**Context:** Build Slice 2026-04-23-05 (WBS QA-01) turned on the repo's ruff-check + ruff-format CI gate. At pre-execution scope-gate review, build-execution surfaced that the packet's original four-entry `[tool.ruff.lint.per-file-ignores]` plan would grandfather only 27 of the 39 baseline findings — leaving 11 unresolved and making Acceptance Check #2 (`ruff check .` reports 0 findings) unsatisfiable. Jonathan was presented with three options (grandfather all 39 / build a smarter allowlist-aware gate / defer QA-01 until the owning slices finish) and pushed back with *"why can't we just fix the errors?"* — the right question. A fourth option emerged from that pushback and was approved as the Scope Amendment: **fix what's cheap and safe in-slice; grandfather only the findings whose real fix requires feature work, DB roundtrip tests, or a blocked upstream dependency.**
+
+**Decision:** The `[tool.ruff.lint.per-file-ignores]` block in `pyproject.toml` represents **pre-triaged, per-file, per-rule grandfather dispositions**, not blanket suppressions. Each entry observes five invariants:
+
+1. **Pre-triaged.** The finding class is already documented in `ISSUES.md` with a named root cause and a named owning slice.
+2. **Per-file, per-rule.** The ignore targets one file × one (or a small set of) rule code(s). It is never a blanket `select = [...]` rule exclusion. New violations of the same rule in any *other* file still fail the gate. New violations of *different* rules in the *same* file also still fail the gate.
+3. **Owning-slice-removable.** Every entry carries a comment naming the slice whose completion removes it. When the owning slice runs, its scope **must** include deleting the ignore entry in the same commit as the underlying code fix.
+4. **No behavior coupling.** Grandfathering a rule does not change runtime behavior — the flagged code keeps running exactly as it did. Grandfathering is a lint-surface decision, not a code decision.
+5. **Investigation, not silencing, for anything new.** When a new finding surfaces in any file, the owning slice must investigate the underlying cause. "Add a per-file ignore" is never the first response to a new finding.
+
+The slice's pivot to Option 4 sets a disposition-per-finding discipline that applies to every future lint-hygiene decision:
+
+- **Cheap to fix in-slice** (no behavior change, no new test cost, no blocked dependency) → fix outright. Examples from this slice: B008 × 8 (migrate to `Annotated[..., Depends(...)]`), E712 × 15 (swap to `.is_(…)` — identical SQL on every dialect), E402 × 5 (reorder one import + `# noqa` the `sys.path` hack sites), F841 × 2 trivial deletes.
+- **Risky to fix without proper coverage** (needs feature work, DB/API roundtrip tests, or a blocked upstream dependency) → grandfather. Examples from this slice: UP042 × 4 (StrEnum migration risks SQLAlchemy `Enum` column + API JSON + Python `in`-comparison MRO differences — needs roundtrip tests; owned by the data-layer cleanup slice), F821 × 3 (BUG-001 real runtime NameError needs a regression test covering three reply paths with Twilio signature middleware; owned by APP-03, blocked on Open Question 3 Twilio BAA), F841 × 2 (unused locals inside the incomplete body of `_cancel_other_offers`; the locals will be consumed once the SMS-notification send path is finished; owned by the `_cancel_other_offers` completion slice).
+
+**Consequences:**
+
+- **30 of 39 findings fixed outright** at Slice 5 close; **9 grandfathered.** `ruff check .` reports 0 findings against the baseline for the first time. `ruff format . --check` reports 0 files need reformatting for the first time.
+- **Three grandfather entries** recorded in `pyproject.toml`: `app/infra/models.py = ["UP042"]`, `app/api/sms_webhook.py = ["F821"]`, `app/core/orchestrator.py = ["F841"]`. Each has a block comment naming the rule code, the finding count, the owning slice, and the ISSUES reference.
+- **Project-wide ruff-version pin.** `requirements.txt` pins `ruff==0.15.9`, `.github/workflows/lint.yml` installs the same pinned version, and any future bump must update both files plus any documentation naming a version in a single commit. This prevents the version-skew failure mode that the Slice 3 5-Whys RCA on EOL drift identified as a class of problem.
+- **New findings are investigated, not silenced.** The QA-01 gate will fail on any net-new finding of any rule in any file. The per-file-ignore block does not protect future code against regression — only against the known, triaged pre-existing baseline.
+- **Every grandfathered entry has an exit path.** UP042 exits when the data-layer cleanup slice migrates the four enums to `StrEnum` with roundtrip tests. F821 exits when APP-03 fixes BUG-001 with a Twilio-signature-middleware regression test. F841 (orchestrator) exits when the `_cancel_other_offers` completion slice finishes the SMS-notification send path. The owning-slice discipline means the grandfather block should shrink, not grow.
+- **Cross-reference:** `Build-Packets.md` Packet 2026-04-23-05 contains the Scope Amendment block recording the Option-4 decision. `CHANGELOG.md` `[Unreleased]` Slice 5 Added block records the per-finding disposition. `ISSUES.md` reflects the closed rule classes (`RUFF-B008`, `RUFF-E712`, `RUFF-E402`, `RUFF-FORMAT-BASELINE-6`) and the partial closes (`RUFF-F841`).
+
+**Invariant added to the build-acceptance discipline:** every future slice's evaluate gate includes the check "does this slice introduce any new `[tool.ruff.lint.per-file-ignores]` entries? If yes, is each backed by an ISSUES entry with a named owning slice and a real reason the underlying code cannot be fixed in-slice?" A "yes" to the first question plus a "no" to the second is grounds for build-evaluate to return REVISE.
+
+---
+
 ### 2026-04-23 — Renormalization is a working-tree operation, not a second commit (mental-model refinement from Slice 4 evaluate)
 
 **Context:** Build Slice 2026-04-23-04 (WBS QA-04) was designed around the assumption that `git add --renormalize .` would stage a large diff (the 47-file RUFF-CRLF-BASELINE-47 LF-ification) and produce a second atomic commit dedicated to the renormalization. At evaluate time, `git add --renormalize .` was a **no-op** — it staged nothing. Investigation via `git ls-files --eol` showed every file already had `i/lf w/crlf`: **the index was LF; only the working tree was CRLF.**

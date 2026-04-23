@@ -7,12 +7,13 @@ and triggers the orchestration workflow.
 
 Author: Jonathan Ives (@dollythedog)
 """
+
 import os
 import sys
 from datetime import datetime, timedelta
 
 # Add project root to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytz
 import requests
@@ -20,22 +21,22 @@ import requests
 
 def create_test_cancellation():
     """Create a test cancellation via API"""
-    
+
     print("🏥 Creating test cancellation...\n")
-    
+
     # Calculate tomorrow at 2:00 PM Central Time
-    central = pytz.timezone('America/Chicago')
+    central = pytz.timezone("America/Chicago")
     tomorrow_2pm = datetime.now(central) + timedelta(days=1)
     tomorrow_2pm = tomorrow_2pm.replace(hour=14, minute=0, second=0, microsecond=0)
-    
+
     # Convert to UTC for API
     slot_start_utc = tomorrow_2pm.astimezone(pytz.UTC)
     slot_end_utc = slot_start_utc + timedelta(minutes=30)
-    
+
     print(f"📅 Slot Time (Central): {tomorrow_2pm.strftime('%A, %B %d at %I:%M %p %Z')}")
     print(f"📅 Slot Time (UTC): {slot_start_utc.strftime('%Y-%m-%d %H:%M:%S %Z')}")
     print()
-    
+
     # Prepare API request
     api_url = "http://localhost:8000/admin/cancel"
     payload = {
@@ -43,15 +44,15 @@ def create_test_cancellation():
         "location": "Test Location",
         "slot_start_at": slot_start_utc.isoformat(),
         "slot_end_at": slot_end_utc.isoformat(),
-        "reason": "Test cancellation for SMS verification"
+        "reason": "Test cancellation for SMS verification",
     }
-    
+
     try:
         print("📤 Sending request to API...")
         response = requests.post(api_url, json=payload, timeout=10)
-        
+
         print(f"📥 Response Status: {response.status_code}\n")
-        
+
         if response.status_code in [200, 201]:
             data = response.json()
             print("✅ Cancellation created successfully!")
@@ -72,21 +73,22 @@ def create_test_cancellation():
             print("   2. Verify SMS received on phone")
             print("   3. Reply YES/NO to test workflow")
             print("   4. Check database to verify state changes")
-            
+
         else:
             print("❌ Error creating cancellation:")
             print(f"   Status: {response.status_code}")
             print(f"   Response: {response.text}")
-            
+
     except requests.exceptions.ConnectionError:
         print("❌ Connection Error!")
         print("   Is the FastAPI backend running?")
         print("   Start it with: make run-api")
         sys.exit(1)
-        
+
     except Exception as e:
         print(f"❌ Unexpected error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

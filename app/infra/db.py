@@ -9,7 +9,9 @@ Author: Jonathan Ives (@dollythedog)
 
 from collections.abc import Generator
 from contextlib import contextmanager
+from typing import Annotated
 
+from fastapi import Depends
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool
@@ -85,16 +87,19 @@ def get_db_dependency() -> Generator[Session, None, None]:
     """
     FastAPI dependency for database sessions.
 
-    Use this as a dependency in FastAPI route handlers.
+    Use this as a dependency in FastAPI route handlers. Prefer the
+    ``DbSession`` type alias below over importing ``Depends(get_db_dependency)``
+    directly — the alias uses FastAPI's modern ``Annotated``-style dependency
+    form and keeps route handler signatures free of ruff ``B008`` findings.
 
     Yields:
         Session: SQLAlchemy session
 
     Example:
-        >>> from fastapi import Depends
+        >>> from app.infra.db import DbSession
         >>>
         >>> @app.get("/patients")
-        >>> def get_patients(db: Session = Depends(get_db_dependency)):
+        >>> def get_patients(db: DbSession):
         ...     return db.query(PatientContact).all()
     """
     session = SessionLocal()
@@ -102,6 +107,30 @@ def get_db_dependency() -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
+
+
+# ----------------------------------------------------------------------------
+# FastAPI dependency type aliases
+# ----------------------------------------------------------------------------
+# ``DbSession`` is the modern ``Annotated``-style form of
+# ``Depends(get_db_dependency)`` and is the preferred way to declare a
+# database-session dependency on a route handler. Using this alias instead of
+# ``db: Session = Depends(get_db_dependency)`` eliminates the ``B008`` lint
+# finding that ruff raises against function-call expressions in argument
+# defaults (ruff has no way to know that FastAPI introspects ``Depends(...)``
+# at route registration time and does not evaluate it per-request).
+#
+# Route handlers declare dependencies like so::
+#
+#     from app.infra.db import DbSession
+#
+#     @router.get("/things")
+#     async def list_things(db: DbSession):
+#         ...
+#
+# The alias is deliberately defined AFTER ``get_db_dependency`` so the
+# function is in scope at module-evaluation time.
+DbSession = Annotated[Session, Depends(get_db_dependency)]
 
 
 def init_db():

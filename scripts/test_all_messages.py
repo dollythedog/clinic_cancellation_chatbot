@@ -10,13 +10,17 @@ Author: Jonathan Ives (@dollythedog)
 import sys
 from pathlib import Path
 
-# Add project root to path
+# Add project root to path before importing local packages. The imports
+# below intentionally appear after this sys.path manipulation — each is
+# annotated with a trailing noqa marker for the E402 rule, which is the
+# standard ruff idiom for "I know this looks like a top-of-file-imports
+# violation, but the path adjustment is required first."
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta  # noqa: E402
 
-from app.core.templates import (
+from app.core.templates import (  # noqa: E402
     format_acceptance_too_late,
     format_acceptance_winner,
     format_cancellation_notification,
@@ -27,8 +31,8 @@ from app.core.templates import (
     format_stop_response,
     format_welcome_message,
 )
-from app.infra.settings import settings
-from app.infra.twilio_client import TwilioClient
+from app.infra.settings import settings  # noqa: E402
+from app.infra.twilio_client import TwilioClient  # noqa: E402
 
 
 def main():

@@ -9,6 +9,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+*Slice 2026-04-23-05 closed 2026-04-23 on Revise Attempt 0; all 14 Build Packet acceptance checks satisfied; WBS QA-01 marked Done on the Design Schematic (Draft + Final §5.G Quality Automation tables and §9 WBS Completion Log). Iteration 1 progress: 8 / 38 WBS items closed. Three key outcomes: (1) `ruff check .` reports 0 findings and `ruff format . --check` reports 0 files need reformatting — both for the first time in the project's history; the Design Schematic §6 Iteration-1 exit criterion "All build acceptance checks pass: `ruff check`, `ruff format --check` … all green" is satisfied. (2) The slice pivoted mid-execution from the packet's original "grandfather-27" plan to the "fix what's cheap, grandfather what's risky" Option-4 discipline after Jonathan asked why more findings couldn't simply be fixed — 30 of 39 findings fixed outright (B008 × 8 via `Annotated[..., Depends(...)]`, E712 × 15 via `.is_(…)`, E402 × 5 via reorder + `# noqa`, F841 × 2 via dead-code delete); 9 grandfathered via `pyproject.toml` per-file-ignores (UP042 × 4 owned by data-layer cleanup, F821 × 3 owned by APP-03 / BUG-001, F841 × 2 owned by `_cancel_other_offers` completion). Each grandfather entry has a named owning-slice exit path. (3) `.github/workflows/lint.yml` is live, blocking merges on any non-zero exit from ruff check or ruff format --check; ruff is pinned to 0.15.9 across `requirements.txt` and the workflow with a project-wide bump discipline recorded in DECISIONS. One new ISSUES entry surfaced from pytest-warning inspection during evaluate: `PYTEST-DEPRECATION-WARNINGS` (pre-existing SQLAlchemy `declarative_base` + Pydantic class-based `Config` — low priority, scoped to the data-layer cleanup and a future deprecation-sweep slice).*
+
+### Added — Build slice 2026-04-23-05 (Lint Hygiene Baseline + Ruff CI Gate, WBS QA-01)
+
+- `.github/workflows/lint.yml` — **created.** Runs `ruff check .` and
+  `ruff format . --check` on every push to `main` and every pull
+  request targeting `main`. Blocks merge on non-zero exit from either
+  command. Pins ruff to 0.15.9, matching the version in
+  `requirements.txt` and the baseline disposition recorded in
+  `pyproject.toml` `[tool.ruff.lint.per-file-ignores]`.
+- `pyproject.toml` — new `[tool.ruff.lint.per-file-ignores]` block
+  grandfathering **9** pre-existing findings (down from the 27
+  originally proposed in the packet — the slice's "fix what's cheap,
+  grandfather what's risky" Option-4 amendment fixed the other 30
+  outright rather than hiding them). Grandfather entries cover only:
+  `app/infra/models.py` = `["UP042"]` (4 StrEnum-migration findings,
+  owned by the data-layer cleanup slice); `app/api/sms_webhook.py` =
+  `["F821"]` (3 BUG-001 runtime-bug findings, owned by APP-03); and
+  `app/core/orchestrator.py` = `["F841"]` (2 unused locals in the
+  incomplete `_cancel_other_offers` body, owned by the
+  `_cancel_other_offers` completion slice).
+- `app/infra/db.py` — added
+  `DbSession = Annotated[Session, Depends(get_db_dependency)]` type
+  alias as the canonical modern-FastAPI form of the database-session
+  dependency. The alias replaces the legacy
+  `db: Session = Depends(get_db_dependency)` idiom across all three
+  API modules, eliminating 8 B008 findings with zero behavior change.
+- `app/api/admin.py` (6 routes), `app/api/sms_webhook.py` (1 route),
+  `app/api/status_webhook.py` (1 route) — migrated to `db: DbSession`
+  form; removed the now-unused `Depends`, `get_db_dependency`, and
+  (in files where it was no longer referenced) `Session` imports.
+- `app/core/prioritizer.py` — 4 `WaitlistEntry.active == True` filters
+  swapped to `.is_(True)` (rule E712). Same compiled SQL on every
+  SQLAlchemy-supported dialect; no query-result change.
+- `dashboard/app.py` — 11 boolean-equality filters swapped to
+  `.is_(True)` / `.is_(False)` (rule E712); **one** F841 dead-code
+  finding deleted (`created_local` at the prior line 246, unused).
+- `app/infra/models.py` — `import enum` moved to the top of the module
+  (E402). Mechanical 1-line reorder; no behavior change.
+- `scripts/test_all_messages.py` — four imports after
+  `sys.path.insert(...)` annotated with trailing `# noqa: E402`
+  comments (E402). The `sys.path` manipulation is the correct idiom
+  for standalone scripts; suppressing at the call site is the right
+  discipline.
+- `scripts/seed_test_real.py` — unused `patients` local at line 132
+  deleted (F841). The function still seeds both test patients via its
+  side effect; only the no-op assignment is removed.
+- Six ruff-format-baseline files reformatted clean by `ruff format .`
+  in the same slice: `app/api/admin.py` (carried drift from this
+  slice's B008 edits), `dashboard/app.py`,
+  `scripts/create_test_cancellation.py`, `scripts/direct_test.py`,
+  `scripts/process_latest_cancellation.py`,
+  `scripts/seed_test_real.py`, `scripts/simulate_response.py`.
+  Paired with Slice 4's 17-file normalization, this closes the entire
+  23-file `RUFF-FORMAT-BASELINE` identified at Slice 2.
+- `tests/test_prioritizer_query_forms.py` — **created.** Six tests
+  locking in the E712 → `.is_()` swap equivalence on all four
+  affected boolean columns (`WaitlistEntry.active`,
+  `PatientContact.opt_out`, `ProviderReference.active`, and the
+  `.is_(False)` forms). Compiles each predicate against the
+  PostgreSQL dialect with literal binds and asserts the exact SQL
+  shape.
+- `requirements.txt` — `ruff` pinned from `>=0.6.0` to `==0.15.9` so
+  local developer workstations evaluate the same rules as the CI gate.
+- `README.md` — new **Continuous Integration** subsection under
+  `## 🤝 Contributing`, documenting the two gate commands, the local
+  reproduction pattern, the ruff-version-bump discipline (update in
+  three places atomically), and the grandfathered-per-file-ignore
+  policy with a pointer to the DECISIONS entry.
+- `DECISIONS.md` — new **2026-04-23 — Grandfathered ruff per-file
+  ignores as the QA-01 gate-activation discipline** entry, documenting
+  the "fix what's cheap, grandfather what's risky" Option-4 discipline
+  the slice pivoted to at the pre-execution scope gate, the three
+  specific grandfather entries and their owning slices, and the
+  invariant that new findings in any file must be investigated — never
+  silently suppressed. Cross-references the Build Packet's Scope
+  Amendment block.
+- `ISSUES.md` — closed `RUFF-B008` (all 8 findings fixed via
+  `Annotated[...]` migration); closed `RUFF-E712` (all 15 findings
+  fixed via `.is_(…)` swap); closed `RUFF-E402` (1 fixed via reorder,
+  4 fixed via `# noqa`); closed `RUFF-FORMAT-BASELINE-6` (the
+  remaining six files reformatted clean — paired with Slice 4's
+  17-file pass this resolves the full original
+  `RUFF-FORMAT-BASELINE-23`). Partial update on `RUFF-F841` — the
+  `seed_test_real.py` and `dashboard/app.py` hits are fixed; the two
+  `orchestrator.py` hits remain grandfathered, owned by the
+  `_cancel_other_offers` completion slice. `RUFF-UP042` and `BUG-001`
+  remain open, now grandfathered via `pyproject.toml` rather than
+  surfacing as raw ruff output, with their owning slices unchanged.
+
+---
+
 *Slice 2026-04-23-04 closed 2026-04-23 on Revise Attempt 0; all 13 Build Packet acceptance checks satisfied; WBS QA-04 marked Done on the Design Schematic (Draft + Final §5.G tables and §9 WBS Completion Log). Iteration 1 progress: 7 / 38 WBS items closed. Three key findings surfaced at evaluate + close: (1) the renormalization was a working-tree re-checkout (`git rm --cached -r . && git reset --hard`), not a second commit — the repo's index had been LF all along via historical `core.autocrlf=true` convert-on-add behavior, and the documented "CRLF drift" lived purely in the working tree (new DECISIONS entry "Renormalization was a working-tree operation, not a second commit" captures the refined mental model). (2) Slice 3's project-management close (2026-04-23) did not include a codebase commit, so Slice 3's code (`app/main.py`, `app/api/health.py`, `tests/test_health_endpoints.py`) sat uncommitted until Slice 4 bundled it into Commit `48b49fa` alongside Slice 4's own `.gitattributes` + docs; new ISSUES entry `BUILD-CLOSEOUT-COMMIT-GATE` scopes the build-closeout skill enhancement needed to prevent recurrence. (3) `ruff format --check` baseline shifted 23 → 6 as an incidental side effect of the LF normalization — 17 Python files were cleaned up for free; new ISSUES entry `RUFF-FORMAT-BASELINE-6` reconciles the count and lists the 6 remaining files. Two ISSUES closed by this slice: `RUFF-CRLF-BASELINE-47` and `EOL-AUTOCRLF-ROOT-CAUSE`, both resolved by the `.gitattributes` policy landing durably.*
 
 ### Added — Build slice 2026-04-23-04 (EOL Normalization, WBS QA-04)

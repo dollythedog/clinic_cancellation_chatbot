@@ -8,10 +8,9 @@ Author: Jonathan Ives (@dollythedog)
 """
 
 import structlog
-from fastapi import APIRouter, Depends, Form, Request, Response
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Form, Request, Response
 
-from app.infra.db import get_db_dependency
+from app.infra.db import DbSession
 from app.infra.models import MessageLog
 from app.infra.twilio_client import _mask_phone
 from utils.time_utils import now_utc
@@ -24,13 +23,13 @@ router = APIRouter(prefix="/twilio", tags=["Twilio Webhooks"])
 @router.post("/status")
 async def handle_status_callback(
     request: Request,
+    db: DbSession,
     MessageSid: str = Form(...),
     MessageStatus: str = Form(...),
     ErrorCode: str | None = Form(None),
     ErrorMessage: str | None = Form(None),
     To: str | None = Form(None),
     From: str | None = Form(None),
-    db: Session = Depends(get_db_dependency),
 ):
     """
     Handle Twilio delivery status callbacks.

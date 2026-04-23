@@ -617,6 +617,40 @@ policy. See [`DECISIONS.md`](DECISIONS.md) (2026-04-23 entry) and
 [`ISSUES.md`](ISSUES.md) § `EOL-AUTOCRLF-ROOT-CAUSE` for the rationale
 and the 5-Whys diagnosis that motivated this policy.
 
+### Continuous Integration
+
+Pushes to `main` and pull requests targeting `main` trigger the
+[`lint`](.github/workflows/lint.yml) GitHub Actions workflow, which
+runs the following two commands and blocks merge on any non-zero exit:
+
+```bash
+ruff check .
+ruff format . --check
+```
+
+Reproduce locally — from the repository root — with the exact same two
+commands. Both are expected to exit 0 on a clean working tree.
+
+The CI job pins ruff to the same version declared in
+[`requirements.txt`](requirements.txt) (currently `ruff==0.15.9`).
+Bumping ruff is a deliberate multi-file change: update the version in
+both `requirements.txt` and
+[`.github/workflows/lint.yml`](.github/workflows/lint.yml) (and any
+documentation that names a version) in a single commit so the gate,
+the developer workstations, and the baseline disposition recorded in
+[`pyproject.toml`](pyproject.toml) `[tool.ruff.lint.per-file-ignores]`
+all move together.
+
+If a lint finding is pre-existing and owned by a future work package,
+the disposition is captured in [`ISSUES.md`](ISSUES.md) and
+grandfathered via a per-file-ignore entry in
+[`pyproject.toml`](pyproject.toml) — never silently suppressed
+globally. New findings in files that have grandfathered ignores still
+fail the gate; the ignore covers only the specific rule code on the
+specific file, not the rule set as a whole. See the 2026-04-23
+`DECISIONS.md` entry titled *"Grandfathered ruff per-file ignores as
+the QA-01 gate-activation discipline"* for the full policy.
+
 ---
 
 ## 📄 License

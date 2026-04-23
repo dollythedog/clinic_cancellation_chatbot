@@ -1,0 +1,55 @@
+# ============================================================================
+# Lint CI Gate — clinic_cancellation_chatbot
+# ============================================================================
+# Runs ruff check + ruff format --check on every push to main and on every
+# pull_request targeting main. Both commands must exit 0 for the job to
+# pass; the job blocks merge on failure.
+#
+# Owning work package: QA-01 (Design Schematic §5.G Quality Automation).
+# Landed: Build Slice 2026-04-23-05 (Packet 2026-04-23-05).
+#
+# Local reproduction (exact same commands):
+#
+#     ruff check .
+#     ruff format . --check
+#
+# The pinned ruff version (0.15.9) matches the version used to capture
+# the lint-hygiene baseline in pyproject.toml `[tool.ruff.lint.per-file-ignores]`
+# and the ruff-format baseline closure recorded in CHANGELOG `[Unreleased]`.
+# Any ruff version bump must be reflected here AND in requirements.txt AND
+# in any developer documentation that names a version — the whole project
+# moves together.
+# ============================================================================
+
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ruff:
+    name: ruff check + format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff (pinned)
+        run: python -m pip install --upgrade "pip<25" && python -m pip install "ruff==0.15.9"
+
+      - name: ruff check
+        run: ruff check .
+
+      - name: ruff format --check
+        run: ruff format . --check

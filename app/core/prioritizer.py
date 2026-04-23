@@ -135,7 +135,7 @@ def update_all_priority_scores(session: Session, active_only: bool = True) -> in
     query = session.query(WaitlistEntry)
 
     if active_only:
-        query = query.filter(WaitlistEntry.active == True)
+        query = query.filter(WaitlistEntry.active.is_(True))
 
     entries = query.all()
     current_time = now_utc()
@@ -173,7 +173,7 @@ def get_prioritized_waitlist(
     query = session.query(WaitlistEntry)
 
     if active_only:
-        query = query.filter(WaitlistEntry.active == True)
+        query = query.filter(WaitlistEntry.active.is_(True))
 
     if exclude_patient_ids:
         query = query.filter(WaitlistEntry.patient_id.notin_(exclude_patient_ids))
@@ -228,7 +228,7 @@ def get_eligible_patients_for_cancellation(
     """
     from app.infra.models import ProviderReference
 
-    query = session.query(WaitlistEntry).filter(WaitlistEntry.active == True)
+    query = session.query(WaitlistEntry).filter(WaitlistEntry.active.is_(True))
 
     # Exclude opted-out patients
     query = query.join(WaitlistEntry.patient).filter(WaitlistEntry.patient.has(opt_out=False))
@@ -292,7 +292,7 @@ def boost_patient_priority(
 
     entry = (
         session.query(WaitlistEntry)
-        .filter(and_(WaitlistEntry.patient_id == patient_id, WaitlistEntry.active == True))
+        .filter(and_(WaitlistEntry.patient_id == patient_id, WaitlistEntry.active.is_(True)))
         .first()
     )
 

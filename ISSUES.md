@@ -108,6 +108,18 @@ Track project issues locally and sync with GitHub Issues. Use `make issues-sync`
 ## 🐛 Bugs
 
 ### BUG-001 — `To` undefined in `app/api/sms_webhook.py` outbound-log branches
+
+> **Grandfather note (2026-04-23, Slice 2026-04-23-05):** The three F821
+> findings are now grandfathered via `pyproject.toml`
+> `"app/api/sms_webhook.py" = ["F821"]` so the ruff CI gate turns on
+> clean. This does **not** fix the bug — it only prevents the lint-surface
+> noise from blocking the gate. The underlying runtime `NameError` still
+> fires on STOP / HELP / error reply paths. **APP-03 is still required to
+> fix the bug with a Twilio-signature-middleware regression test covering
+> all three reply paths.** When APP-03 lands, the owning slice must
+> remove the `"app/api/sms_webhook.py" = ["F821"]` entry in the same
+> commit as the code fix.
+
 - **Severity:** bug (runtime `NameError`)
 - **Discovered:** 2026-04-19 by build-evaluate on Build slice 2026-04-08-01 (Packet 2026-04-08-01)
 - **Symptom:** Three outbound `MessageLog` builders reference an undefined name `To`:
@@ -132,6 +144,36 @@ in CI. Cataloged here per the Build Acceptance Checklist ("Missing items
 become open issues in ISSUES.md — they are not silently deferred").
 
 Total: **35 findings** across 6 files. Grouped by rule + owning slice.
+
+---
+
+### 📌 Closure Update — Slice 2026-04-23-05 (WBS QA-01)
+
+Build Slice 2026-04-23-05 activated the ruff CI gate (`ruff check .`,
+`ruff format . --check`) via `.github/workflows/lint.yml` after applying
+the "fix what's cheap, grandfather what's risky" Option-4 discipline (see
+DECISIONS 2026-04-23 and Build-Packets.md Packet 2026-04-23-05 Scope
+Amendment). Disposition of every entry in this section at slice close:
+
+| Rule | Count | Disposition at Slice-5 close |
+|---|---|---|
+| B008 | 8 | **CLOSED** — all 8 fixed via `Annotated[..., Depends(...)]` migration (`app/infra/db.py` + the 3 API modules) |
+| E712 | 15 | **CLOSED** — all 15 swapped to `.is_(…)` form (`app/core/prioritizer.py` 4 + `dashboard/app.py` 11); test coverage in `tests/test_prioritizer_query_forms.py` |
+| UP042 | 4 | **GRANDFATHERED** via `pyproject.toml` `"app/infra/models.py" = ["UP042"]`; owning slice (data-layer cleanup) removes the ignore when it migrates the four enums to `StrEnum` with DB + API JSON roundtrip tests |
+| E402 | 5 | **CLOSED** — `app/infra/models.py:43` reordered; `scripts/test_all_messages.py:17,19,30,31` marked with trailing `# noqa: E402` (standard idiom for the `sys.path.insert(...)` hack) |
+| F821 | 3 | **GRANDFATHERED** via `pyproject.toml` `"app/api/sms_webhook.py" = ["F821"]`; this is BUG-001, owned by APP-03. The ignore exits when APP-03 fixes BUG-001 with a Twilio-signature-middleware regression test |
+| F841 | 4 | **PARTIAL CLOSE** — 2 of 4 fixed (`scripts/seed_test_real.py:132` delete, `dashboard/app.py:246` `created_local` delete); 2 grandfathered via `pyproject.toml` `"app/core/orchestrator.py" = ["F841"]`; the orchestrator hits exit when the `_cancel_other_offers` completion slice finishes the SMS-notification send path |
+
+**Gate state at slice close:** `ruff check .` reports 0 findings (down
+from 39); `ruff format . --check` reports 0 files need reformatting
+(down from 6 at Slice 4 close, which was itself down from 23 at Slice 2
+close). The CI gate is live and blocks merges on any new finding or
+any new format drift in any file.
+
+**What stays open in this section:** Only the **GRANDFATHERED** rows
+above (UP042 × 4 and F841 × 2 — 6 findings total) remain live. They
+survive here as reminders of the owning-slice exit paths. Every other
+row is documentation-of-history only.
 
 ### RUFF-B008 (8) — FastAPI `Depends(...)` in argument defaults
 - **Finding:** `B008 Do not perform function call Depends in argument defaults`
@@ -201,7 +243,9 @@ Ownership disposition for the newly-surfaced items:
 - `seed_test_real.py:132` (F841 × 1) → QA-01 (trivial delete)
 - `dashboard/app.py` 11th E712 → APP-08 (the dashboard-findings group grows from 10 to 11; per-file ignore disposition unchanged)
 
-### RUFF-FORMAT-BASELINE-23 → RUFF-FORMAT-BASELINE-6 (updated 2026-04-23 by Slice 4)
+### RUFF-FORMAT-BASELINE-23 → RUFF-FORMAT-BASELINE-6 → CLOSED (2026-04-23 by Slice 5)
+
+**Status:** Closed — resolved by **Packet 2026-04-23-05 (Slice 5, WBS QA-01)** on 2026-04-23. The remaining 6 ruff-format-baseline files (`dashboard/app.py`, `scripts/create_test_cancellation.py`, `scripts/direct_test.py`, `scripts/process_latest_cancellation.py`, `scripts/seed_test_real.py`, `scripts/simulate_response.py`) were reformatted clean by `ruff format .` in the same slice that activated the CI gate. Combined with Slice 4's 17-file LF-normalization pass, this resolves the full original 23-file baseline identified at Slice 2. Post-slice verification: `ruff format . --check` reports "38 files already formatted, 0 would be reformatted."
 
 **Update (2026-04-23 — Slice 4 / Packet 2026-04-23-04 / WBS QA-04 closeout):** The baseline has shrunk from 23 to **6** as an incidental side effect of the EOL normalization. Slice 4's forced working-tree re-checkout (`git rm --cached -r . && git reset --hard`) rewrote every tracked file with LF line endings per the new `.gitattributes` `* text=auto eol=lf` policy. Ruff's format engine evaluates line endings when computing its canonical output; with LF working-tree content now matching what ruff emits by default, 17 of the 23 previously-flagged files pass `ruff format . --check` cleanly without any explicit reformatting.
 
@@ -240,6 +284,43 @@ Ownership disposition for the newly-surfaced items:
 **Owning slice:** Optional — may be folded into QA-01 or a DECISIONS.md addition with the other Slice-2 baseline reconciliations. Not blocking.
 
 **Resolution:** Closed by Slice 3 DECISIONS.md entry `2026-04-23 — Promote inline ruff check --fix && ruff format to an execution-checklist item`. Build-execution's Suggested Validation Commands block now leads with inline ruff; Slice 3's Revise Attempt 1 honored the new rule (pre-handoff ruff reported "All checks passed! 3 files left unchanged").
+
+---
+
+### PYTEST-DEPRECATION-WARNINGS (2026-04-23) — two pre-existing deprecation warnings emitted on every pytest run
+
+**Discovered:** Surfaced formally during Slice 5 (Packet 2026-04-23-05) evaluate; present in every pytest run since at least Slice 4 and mentioned casually in the Slice 4 CHANGELOG closure note. Slice 5 captures them as a proper ISSUES entry for the first time.
+
+**Finding:** Every `pytest` invocation on the suite emits the same two `warnings summary` entries:
+
+1. `app/infra/models.py:38 MovedIn20Warning: The declarative_base() function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0)` — the legacy `from sqlalchemy.ext.declarative import declarative_base` import site at `app/infra/models.py:34`. Fix is a one-line import swap to `from sqlalchemy.orm import declarative_base`.
+2. `app/api/admin.py:52 PydanticDeprecatedSince20: Support for class-based config is deprecated, use ConfigDict instead.` — the `class CancellationResponse(BaseModel)` inner `class Config:` block at `app/api/admin.py:64-65`. Fix is replacing the inner class with `model_config = ConfigDict(from_attributes=True)`.
+
+**Classification:** Low-priority quality debt. Neither warning affects correctness today. Both name upstream APIs that WILL be removed in a future major version of their respective libraries (SQLAlchemy 3.0 and Pydantic V3) — the warnings are the libraries giving early notice that silent breakage is scheduled. Both fixes are mechanical and safe; what holds them off is purely slice-ownership discipline.
+
+**Owning slices:**
+
+- **MovedIn20Warning** → the dedicated **data-layer cleanup slice** (the same slice that will migrate UP042 `class X(str, enum.Enum)` → `StrEnum` in `app/infra/models.py`). Fold the `declarative_base` import swap into that slice so the data-layer file gets one coherent pass.
+- **PydanticDeprecatedSince20** → a **Pydantic-V2-idiom sweep** slice. The project likely has multiple class-based `Config` sites (admin.py is only the one surfaced by pytest's warning filter). A sweep slice should find all `class Config:` inner classes inside `BaseModel` subclasses across `app/` and migrate them to `model_config = ConfigDict(...)` in a single pass, plus any other Pydantic-V1 idioms (e.g., `@validator` → `@field_validator`, `BaseSettings(env_file=...)` → `SettingsConfigDict(...)`). This is not an existing WBS item; it will surface as a new ISSUES-driven slice proposal when the data-layer cleanup slice runs or shortly thereafter.
+
+**Suggested fix (per warning):**
+
+1. In `app/infra/models.py`, replace the line `from sqlalchemy.ext.declarative import declarative_base` with `from sqlalchemy.orm import declarative_base`.
+2. In `app/api/admin.py`, in the `CancellationResponse(BaseModel)` class, replace:
+   ```python
+   class Config:
+       from_attributes = True
+   ```
+   with:
+   ```python
+   from pydantic import ConfigDict
+   model_config = ConfigDict(from_attributes=True)
+   ```
+   (and sweep the rest of the codebase for matching `class Config:` blocks; expect 1–5 call sites given the project's size).
+
+**Priority:** 🟢 Low. Neither fix is runtime-critical. Both should land inside their respective owning slices to preserve slice-coherence discipline. Do NOT fold into QA-01 or any other lint-hygiene slice — these are real code edits on application files, not lint-surface decisions.
+
+**Cross-reference:** Both warnings are visible in any Slice 5 or later pytest run. Slice 5 evaluate paste-back shows them at the tail of the "warnings summary" section (2 warnings, 0 failures, 24 passed).
 
 ---
 

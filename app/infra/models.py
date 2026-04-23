@@ -15,6 +15,7 @@ All timestamps are stored in UTC. Use utils.time_utils for timezone conversions.
 Author: Jonathan Ives (@dollythedog)
 """
 
+import enum
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -39,8 +40,6 @@ Base = declarative_base()
 # ============================================================================
 # ENUMS
 # ============================================================================
-
-import enum
 
 
 class CancellationStatus(str, enum.Enum):

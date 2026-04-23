@@ -10,7 +10,7 @@ Author: Jonathan Ives (@dollythedog)
 """
 
 import structlog
-from fastapi import APIRouter, Depends, Form, Request, Response
+from fastapi import APIRouter, Form, Request, Response
 from sqlalchemy.orm import Session
 
 from app.core.orchestrator import OfferOrchestrator
@@ -20,7 +20,7 @@ from app.core.templates import (
     format_stop_response,
     parse_patient_response,
 )
-from app.infra.db import get_db_dependency
+from app.infra.db import DbSession
 from app.infra.models import MessageDirection, MessageLog, MessageStatus, PatientContact
 from app.infra.twilio_client import _mask_phone, twilio_client
 from utils.time_utils import now_utc
@@ -37,11 +37,11 @@ router = APIRouter(prefix="/sms", tags=["SMS Webhooks"])
 @router.post("/inbound")
 async def handle_inbound_sms(
     request: Request,
+    db: DbSession,
     From: str = Form(...),
     To: str = Form(...),
     Body: str = Form(...),
     MessageSid: str | None = Form(None),
-    db: Session = Depends(get_db_dependency),
 ):
     """
     Handle inbound SMS from Twilio.

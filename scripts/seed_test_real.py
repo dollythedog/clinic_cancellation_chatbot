@@ -9,12 +9,13 @@ Creates:
 
 Author: Jonathan Ives (@dollythedog)
 """
+
 import os
 import sys
 from datetime import timedelta
 
 # Add project root to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.core.prioritizer import calculate_priority_score
 from app.infra.db import get_session
@@ -31,6 +32,7 @@ def clear_existing_data(db):
     """Clear all existing data"""
     print("🗑️  Clearing existing data...")
     from app.infra.models import MessageLog, Offer
+
     db.query(MessageLog).delete()
     db.query(Offer).delete()
     db.query(CancellationEvent).delete()
@@ -44,14 +46,14 @@ def clear_existing_data(db):
 def seed_test_provider(db):
     """Create test provider"""
     print("\n👨‍⚕️ Creating test provider...")
-    
+
     provider = ProviderReference(
         provider_name="Dr. Test Provider",
         provider_type="MD/DO",
         active=True,
-        tags=["Test", "Clinic"]
+        tags=["Test", "Clinic"],
     )
-    
+
     db.add(provider)
     db.commit()
     print(f"✅ Created provider: {provider.provider_name}")
@@ -61,19 +63,16 @@ def seed_test_provider(db):
 def seed_test_patients(db):
     """Create Jonathan and Kylie as test patients"""
     print("\n👥 Creating test patients...")
-    
+
     now = now_utc()
-    
+
     # Jonathan
     jonathan = PatientContact(
-        phone_e164="+18177743563",
-        display_name="Jonathan I.",
-        consent_source="test",
-        opt_out=False
+        phone_e164="+18177743563", display_name="Jonathan I.", consent_source="test", opt_out=False
     )
     db.add(jonathan)
     db.flush()
-    
+
     jonathan_waitlist = WaitlistEntry(
         patient_id=jonathan.id,
         urgent_flag=True,
@@ -82,21 +81,18 @@ def seed_test_patients(db):
         provider_type_preference="Any",
         active=True,
         joined_at=now - timedelta(days=5),
-        notes="Test patient - Jonathan"
+        notes="Test patient - Jonathan",
     )
     jonathan_waitlist.priority_score = calculate_priority_score(jonathan_waitlist)
     db.add(jonathan_waitlist)
-    
+
     # Kylie
     kylie = PatientContact(
-        phone_e164="+18178887746",
-        display_name="Kylie I.",
-        consent_source="test",
-        opt_out=False
+        phone_e164="+18178887746", display_name="Kylie I.", consent_source="test", opt_out=False
     )
     db.add(kylie)
     db.flush()
-    
+
     kylie_waitlist = WaitlistEntry(
         patient_id=kylie.id,
         urgent_flag=False,
@@ -105,35 +101,37 @@ def seed_test_patients(db):
         provider_type_preference="Any",
         active=True,
         joined_at=now - timedelta(days=3),
-        notes="Test patient - Kylie"
+        notes="Test patient - Kylie",
     )
     kylie_waitlist.priority_score = calculate_priority_score(kylie_waitlist)
     db.add(kylie_waitlist)
-    
+
     db.commit()
-    
-    print(f"✅ Created patient: Jonathan (+18177743563) - Priority: {jonathan_waitlist.priority_score}")
+
+    print(
+        f"✅ Created patient: Jonathan (+18177743563) - Priority: {jonathan_waitlist.priority_score}"
+    )
     print(f"✅ Created patient: Kylie (+18178887746) - Priority: {kylie_waitlist.priority_score}")
-    
+
     return [jonathan, kylie]
 
 
 def main():
     """Main seed function"""
     print("🌱 Starting test database seed...\n")
-    
+
     try:
         with get_session() as db:
             # Clear existing data
             clear_existing_data(db)
-            
+
             # Seed test data
             provider = seed_test_provider(db)
-            patients = seed_test_patients(db)
-            
-            print("\n" + "="*60)
+            seed_test_patients(db)
+
+            print("\n" + "=" * 60)
             print("✅ Test database seeded successfully!")
-            print("="*60)
+            print("=" * 60)
             print("\nSummary:")
             print(f"  • Provider: Dr. Test Provider (ID: {provider.id})")
             print("  • Jonathan: +18177743563")
@@ -142,10 +140,11 @@ def main():
             print("  1. Start the API: make run-api")
             print("  2. Create a test cancellation via API")
             print("  3. Check your phone for SMS!")
-            
+
     except Exception as e:
         print(f"\n❌ Error seeding database: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

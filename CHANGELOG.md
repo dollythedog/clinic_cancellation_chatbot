@@ -9,6 +9,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+*Slice 2026-04-23-07 closed 2026-04-23 on Revise Attempt 2; all 21 Build Packet acceptance checks satisfied; WBS APP-03 and TST-02 marked Done on the Design Schematic (Draft + Final §5.C Core Application Hardening / §5.F Testing tables and §9 WBS Completion Log). Iteration 1 progress: 12 / 38 WBS items closed. Three outcomes: (1) `TwilioSignatureMiddleware` is live, rejecting unsigned / invalidly-signed POSTs to `/sms/*` and `/twilio/*` with HTTP 403 before any route handler runs — the Validation Boundaries guardrail lens external seam 1 is now enforced. (2) BUG-001 (`NameError: To` on every STOP / HELP / NO reply outbound-log path) fixed at source; the `"app/api/sms_webhook.py" = ["F821"]` grandfather entry removed from `pyproject.toml` per the Slice-5 owning-slice-removable invariant (grandfather count 9 → 6). (3) The in-repo half of the §6 Iteration-1 exit criterion "Twilio signature verification confirmed end-to-end" is satisfied; the end-to-end tail remains OPS-02 / BAA-gated. Revise cycles consumed 2 of 3 attempts: Attempt 1 misdiagnosed the 5 middleware-fixture errors as pytest-monkeypatch + pydantic-setattr incompatibility; Attempt 2 identified the real root cause as namespace shadowing in `app/infra/__init__.py` (which re-exports `settings` and thereby rebinds the `app.infra.settings` package attribute to the Settings instance, breaking `import app.infra.settings as X` bytecode in downstream tests) and fixed it by switching the fixture to `from app.infra.settings import settings`. Two new ISSUES entries surfaced for cross-slice follow-up: `INFRA-NAMESPACE-SHADOWING` (workaround-known, low priority) and `NULL-BYTE-SCRUB-AUTOMATION` (related to `BUILD-CLOSEOUT-COMMIT-GATE`).*
+
+### Added — Build slice 2026-04-23-07 (Twilio Signature Middleware + BUG-001 Fix, WBS APP-03 / TST-02 + BUG-001)
+
+- `app/api/middleware.py` — **created.** Defines
+  `TwilioSignatureMiddleware(BaseHTTPMiddleware)` which enforces Twilio
+  signature verification on every POST to `/sms/*` and `/twilio/*`.
+  Missing or invalid `X-Twilio-Signature` → HTTP 403 before any
+  handler runs. Uses `twilio.request_validator.RequestValidator`
+  against `settings.TWILIO_AUTH_TOKEN` plus the sorted form-encoded
+  body params — matches Twilio's documented HMAC-SHA1 signing
+  algorithm. All non-Twilio paths (`/healthz`, `/readyz`, `/health`,
+  `/`, `/docs`, `/admin/*`) pass through unmodified.
+- `app/main.py` — middleware registered via `app.add_middleware(...)`
+  after `CORSMiddleware`; new `app.middleware_registered` structured
+  log event announces the registration at startup.
+- `app/api/sms_webhook.py` — **BUG-001 fix.** The three
+  `from_phone=To` sites in `handle_opt_out` (line ~188),
+  `handle_help_request` (line ~230), and `handle_no_response`
+  (line ~306) are replaced with `from_phone=settings.TWILIO_PHONE_NUMBER`.
+  `from app.infra.settings import settings` added at the top. The
+  prior code raised `NameError` on every STOP / HELP / NO reply path —
+  outbound logging was silently broken for three of the four reply
+  types. No other logic changes in this file.
+- `pyproject.toml` — the `"app/api/sms_webhook.py" = ["F821"]`
+  per-file-ignore entry is **removed** from `[tool.ruff.lint.per-file-ignores]`.
+  The underlying BUG-001 `NameError` is now fixed at source, so the
+  grandfather is no longer needed. Header comment count dropped from
+  "9 findings grandfathered" to "6 findings grandfathered" —
+  consistent with Slice 5's "every grandfather entry has a named
+  owning-slice exit path" invariant.
+- `tests/test_twilio_signature_middleware.py` — **created.** Five
+  test cases covering the middleware contract: unsigned request → 403;
+  invalidly-signed request → 403; validly-signed request passes
+  through to the handler (observed via a monkeypatched
+  `twilio_client.send_sms` call counter); `/twilio/status` unsigned
+  → 403 (confirms the `/twilio/*` prefix is protected too);
+  `/healthz` and `/` unsigned → 200 (confirms non-protected paths
+  are unaffected).
+- `tests/test_sms_webhook_outbound_log.py` — **created.** Three
+  regression tests, one per BUG-001 site (STOP / HELP / NO reply
+  paths). Each asserts (a) no `NameError` is raised and (b) the
+  outbound `MessageLog` row is constructed with
+  `from_phone == settings.TWILIO_PHONE_NUMBER`. Uses a minimal
+  `_StubSession` to capture `db.add` calls and a monkeypatched
+  `twilio_client.send_sms`; no live Postgres or live Twilio call-out.
+- `README.md` — new "Webhook authentication" subsection under
+  `## 🔐 Security & Compliance` documenting the protected path
+  prefixes, the signing algorithm, the `TWILIO_WEBHOOK_BASE_URL`
+  strategy, and the local reproduction command for computing valid
+  signatures against the auth token.
+- `DECISIONS.md` — new 2026-04-23 entry titled *"Twilio signature
+  middleware URL strategy — `TWILIO_WEBHOOK_BASE_URL` as canonical
+  signing URL, `request.url` as warn-logged fallback"* capturing why
+  the internal FastAPI URL is wrong behind a reverse proxy / tunnel,
+  why an explicit config value is preferred over trusting
+  `X-Forwarded-*` headers, and the fallback semantics for local dev.
+- `ISSUES.md` — BUG-001 **moved** to `## ✅ Closed / Resolved Issues`
+  with resolution note pointing at Packet 2026-04-23-07; RUFF-F821
+  marked closed (the 3-finding partition is resolved at source, not
+  grandfathered).
+
+**Scope and deployment gating.** This slice delivers the in-repo
+cryptographic-verification half of the Iteration-1 exit criterion
+*"Twilio signature verification confirmed end-to-end"*. The
+"end-to-end" tail — live Twilio webhooks hitting production — remains
+gated on the Twilio BAA, which Jonathan has filed with his Twilio
+representative. Live verification happens at OPS-02 (initial prod
+deploy) when the BAA is in place; this slice explicitly does **not**
+include any live Twilio call-out.
+
+No application source changes outside `app/main.py`,
+`app/api/middleware.py`, and `app/api/sms_webhook.py` — `status_webhook`,
+`admin`, `health`, `dashboard`, `prioritizer`, `orchestrator`, and
+`models` remain untouched.
+
 *Slice 2026-04-23-06 closed 2026-04-23 on Revise Attempt 0; all 12 Build Packet acceptance checks satisfied; WBS TST-01 and QA-02 marked Done on the Design Schematic (Draft + Final §5.F Testing / §5.G Quality Automation tables and §9 WBS Completion Log). Iteration 1 progress: 10 / 38 WBS items closed. Two outcomes: (1) `.github/workflows/test.yml` is live, blocking merges on any non-zero exit from `pytest`; pytest is pinned to 7.4.3 via `requirements.txt` and the workflow installs the full project dependency tree because the test suite imports `app.*` modules at collection time. Together with `.github/workflows/lint.yml` from Slice 5, the Design Schematic §6 Iteration-1 exit criterion "All build acceptance checks pass: `ruff check`, `ruff format --check`, `pytest` all green" is now fully operationalized as merge-blocking CI. (2) TST-01 "confirm the environment hasn't drifted" obligation attested against the accumulated Slice-1-through-5 evidence (stable 24/24-green across two weeks, no drift encountered since the November 2025 pause). Zero scope creep: exactly 3 files touched (`.github/workflows/test.yml` created; `README.md` Continuous-Integration subsection extended; `CHANGELOG.md` Slice 6 Added block inserted). No application source, test content, `pyproject.toml`, `requirements.txt`, or `lint.yml` edits. No new ISSUES entries (the pre-existing `PYTEST-DEPRECATION-WARNINGS` tracked from Slice 5 remains open and scoped to a later slice); no new DECISIONS entries (the Slice-5 version-pin discipline already covered the parallel pytest-version case by extension).*
 
 ### Added — Build slice 2026-04-23-06 (Pytest CI Gate + Pytest Suite Baseline Attestation, WBS QA-02 / TST-01)

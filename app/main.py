@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.admin import router as admin_router
 from app.api.health import router as health_router
+from app.api.middleware import TwilioSignatureMiddleware
 from app.api.sms_webhook import router as sms_router
 from app.api.status_webhook import router as status_router
 from app.core.scheduler import init_scheduler, shutdown_scheduler
@@ -94,6 +95,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Enforce Twilio signature verification on /sms/* and /twilio/* paths.
+# Unsigned or invalidly-signed POSTs are rejected with HTTP 403 before
+# any route handler runs. All other paths (/healthz, /readyz, /health,
+# /, /docs, /admin/*) pass through unmodified. See
+# `app.api.middleware.TwilioSignatureMiddleware` for the full contract
+# and DECISIONS.md 2026-04-23 "Twilio signature middleware URL strategy".
+app.add_middleware(TwilioSignatureMiddleware)
+
 
 # Health check endpoint
 @app.get("/health")
@@ -124,6 +133,10 @@ app.include_router(status_router)  # Prefix: /twilio
 app.include_router(health_router)  # No prefix — /healthz and /readyz are public probes
 
 logger.info("app.routers_registered", routers=["admin", "sms", "twilio", "health"])
+logger.info(
+    "app.middleware_registered",
+    middleware=["CORSMiddleware", "TwilioSignatureMiddleware"],
+)
 
 
 if __name__ == "__main__":

@@ -107,29 +107,7 @@ Track project issues locally and sync with GitHub Issues. Use `make issues-sync`
 
 ## 🐛 Bugs
 
-### BUG-001 — `To` undefined in `app/api/sms_webhook.py` outbound-log branches
-
-> **Grandfather note (2026-04-23, Slice 2026-04-23-05):** The three F821
-> findings are now grandfathered via `pyproject.toml`
-> `"app/api/sms_webhook.py" = ["F821"]` so the ruff CI gate turns on
-> clean. This does **not** fix the bug — it only prevents the lint-surface
-> noise from blocking the gate. The underlying runtime `NameError` still
-> fires on STOP / HELP / error reply paths. **APP-03 is still required to
-> fix the bug with a Twilio-signature-middleware regression test covering
-> all three reply paths.** When APP-03 lands, the owning slice must
-> remove the `"app/api/sms_webhook.py" = ["F821"]` entry in the same
-> commit as the code fix.
-
-- **Severity:** bug (runtime `NameError`)
-- **Discovered:** 2026-04-19 by build-evaluate on Build slice 2026-04-08-01 (Packet 2026-04-08-01)
-- **Symptom:** Three outbound `MessageLog` builders reference an undefined name `To`:
-  - `app/api/sms_webhook.py:147` — `from_phone=To,  # Our number`
-  - `app/api/sms_webhook.py:177` — `from_phone=To,  # Our number`
-  - `app/api/sms_webhook.py:228` — `from_phone=To,  # Our number`
-- **Impact:** Any code path that reaches these branches (STOP/HELP handlers, error responder) raises `NameError` at runtime before the log entry is written. Outbound logging is currently broken for those three reply types.
-- **Diagnosis:** Function signature only declares `From: str = Form(...)` and `Body: str = Form(...)` — there is no `To` parameter. The intent is almost certainly to log our own Twilio-owned number as `from_phone` on outbound replies, pulled from `settings.TWILIO_PHONE_NUMBER`.
-- **Suggested fix:** Add `To: str = Form(None)` to the signature (Twilio webhooks post this as the destination of the inbound message, which equals our `from_phone` on outbound) OR replace the three `from_phone=To` sites with `from_phone=settings.TWILIO_PHONE_NUMBER`. The latter is less coupled to Twilio's form schema.
-- **Owning slice:** APP-03 (Twilio signature middleware) or INT-03 (STOP/HELP keyword handling end-to-end). Needs a regression test that exercises each of the three reply paths and asserts the `MessageLog` entry is written.
+*All tracked bugs are currently closed; see `## ✅ Closed / Resolved Issues` below for BUG-001's resolution.*
 
 ---
 
@@ -203,7 +181,8 @@ row is documentation-of-history only.
 - **Owning slice:** `models.py` entry → data-layer cleanup slice (alongside RUFF-UP042). `test_all_messages.py` entries → QA-01 or a dedicated script-hygiene micro-slice.
 
 ### RUFF-F821 (3) — Undefined name `To`
-- See **BUG-001** under the Bugs section above. These are not style issues — they are runtime defects masquerading as lint findings.
+- **CLOSED 2026-04-23** by Build Slice 2026-04-23-07 (Packet 2026-04-23-07, WBS APP-03 + BUG-001). All three `from_phone=To` sites in `app/api/sms_webhook.py` fixed at source (replaced with `from_phone=settings.TWILIO_PHONE_NUMBER`); `"app/api/sms_webhook.py" = ["F821"]` entry removed from `pyproject.toml` `[tool.ruff.lint.per-file-ignores]` in the same commit. Regression tests in `tests/test_sms_webhook_outbound_log.py` cover all three reply paths (STOP / HELP / NO).
+- See BUG-001 in the Closed / Resolved section below for the full root-cause and fix narrative.
 
 ### RUFF-F841 (1) — Unused local variable
 - **Finding:** `dashboard/app.py:287 — created_local is assigned to but never used`
@@ -332,6 +311,64 @@ Ownership disposition for the newly-surfaced items:
 
 ## 🔧 Build-System & Skill-Level Follow-Ups
 
+### INFRA-NAMESPACE-SHADOWING (2026-04-23) — `app.infra/__init__.py` re-export shadows the `app.infra.settings` submodule attribute
+
+**Finding:** During Build Slice 2026-04-23-07 (Packet 2026-04-23-07, WBS APP-03 / TST-02), the new middleware test fixture used the idiom `import app.infra.settings as settings_module; settings = settings_module.settings` to obtain the Settings singleton for test-time override. This raised `AttributeError: 'Settings' object has no attribute 'settings'` on every test's setup, consuming **2 of the 3 available revise attempts** before the real root cause was identified.
+
+**Root cause:** `app/infra/__init__.py` contains `from app.infra.settings import settings`, which imports the Settings **instance** into the `app.infra` package's namespace under the name `settings`. This rebinds the attribute `app.infra.settings` (on the `app.infra` package object) to point at the instance rather than the submodule. Python's `import app.infra.settings as X` bytecode resolves the final segment via `getattr(app.infra, 'settings')` — which after the `__init__.py` re-export returns the **instance**, not the module. `X.settings` then triggers pydantic's `__getattr__('settings')` on the instance, which has no field by that name, and raises `AttributeError`.
+
+**Impact:**
+
+- **Cost 2 of 3 revise attempts** in Slice 7. Attempt 1 misdiagnosed the error as a pytest-monkeypatch + pydantic-setattr incompatibility and replaced `monkeypatch.setattr` with `object.__setattr__` (did not help — the real failure was one line upstream, in argument evaluation). Attempt 2 correctly diagnosed the namespace shadow and switched the fixture to `from app.infra.settings import settings` which resolves the name through the submodule's own namespace rather than via the shadowed package attribute.
+- **Latent footgun for every future test** that wants to reach into `app.infra.settings` the module (as opposed to the Settings instance). Any test using `import app.infra.settings as X` will hit the same shadow. The recommended idiom `from app.infra.settings import settings` happens to sidestep it by accident — but a future contributor may try other forms and hit this.
+
+**Workaround (applies now):** Use `from app.infra.settings import settings` in tests and other consumers. Do not use `import app.infra.settings as X` followed by `X.settings`. If you really need the submodule object (rare), use `import sys; sys.modules["app.infra.settings"]` which bypasses the package-attribute path entirely.
+
+**Countermeasure options (for a future cleanup slice):**
+
+1. **Remove the re-export from `app/infra/__init__.py`.** Drop `from app.infra.settings import settings` and its entry in `__all__`. Downstream callers already import `from app.infra.settings import settings` directly; the re-export is a convenience that creates the shadow. Low-risk change, but touches every call site that used `from app.infra import settings` (if any exist — grep first).
+2. **Rename the submodule to avoid the collision.** E.g., `app/infra/config.py` with the Settings class, and keep `from app.infra.config import settings` in `__init__.py`. Higher-cost but eliminates the ambiguity at the source.
+3. **Document the trap in CLAUDE.md / WARP.md / test-writing guidelines.** Accept the shadow as a fact of life; just warn future contributors not to use the `import ... as X` form on `app.infra.settings`.
+
+**Owning slice / skill:** A dedicated `app/infra/` hygiene slice. Not blocking Iteration 1 exit — the workaround is trivial once known. Captured here so the trap is visible to the next person who writes a test importing `app.infra.settings`.
+
+**Priority:** 🟢 Low — workaround is trivial; no runtime risk; only costs time when a contributor first hits it.
+
+---
+
+### NULL-BYTE-SCRUB-AUTOMATION (2026-04-23) — null bytes appear in source files after Edit-tool operations on Windows-mounted filesystem, blocking pytest collection
+
+**Finding:** During Build Slice 2026-04-23-07 Revise Attempt 2, `tests/test_twilio_signature_middleware.py` accumulated 2 null (`\0`) bytes after an Edit-tool operation on the Windows-mounted workspace. Pytest collection then failed with `ValueError: source code string cannot contain null bytes`, blocking the entire middleware test suite until a manual `tr -d '\0'` scrub restored parseability.
+
+**Symptoms:**
+
+- `pytest tests/...` reports `ERROR ... - ValueError: source code string cannot contain null bytes`; 1 error during collection; no tests run.
+- `cat` and `Read` on the file display content normally — null bytes are invisible in most text renderers.
+- Detection command: `tr -cd '\0' < path/to/file | wc -c` returns a non-zero count.
+
+**Pattern:** The agent's Edit tool writes to files via the Windows-mount bridge. Under some conditions (exact trigger not fully characterized — correlates with edits near file-end regions or after rapid successive edits), the mount layer introduces spurious null bytes in the written file. The project has seen this before at the README `## Log` tail — the project-manager and build-orchestrator skills already document a mandatory `tr -d '\0' < FILE > /tmp/tmp && cat /tmp/tmp > FILE` scrub after every edit that touches a file's trailing bytes.
+
+**Impact:**
+
+- **Cost at least 1 round trip** in Slice 7 Revise Attempt 2 to diagnose and scrub. Jonathan's initial pytest run failed with an error message (`ValueError: source code string cannot contain null bytes`) that doesn't obviously point to null-byte contamination — the agent had to recognize the symptom from prior experience with the README `## Log` case.
+- **Silent risk:** a null-byte-contaminated Python source file that somehow slips past `pytest` collection (e.g., if the null bytes land in a comment region that CPython tolerates) would be a time bomb — it would survive `ruff check` but fail in any CPython context that actually parses the bytes.
+
+**Root cause:** Windows-mount file-write behavior in the agent's sandboxed environment. Not a codebase defect — an agent-infrastructure defect at the tool-mount interface layer.
+
+**Countermeasure (proposed — related to and extends `BUILD-CLOSEOUT-COMMIT-GATE`):** Add a Step 1.6 "Null-Byte Scrub" to the build-closeout procedure (and potentially to build-execution's file-write discipline):
+
+1. For every file in the slice's touched-file list (from `git status --porcelain`), run `tr -cd '\0' < FILE | wc -c`.
+2. If any file reports >0 null bytes, scrub via `tr -d '\0' < FILE > /tmp/clean && cat /tmp/clean > FILE` and emit a structured log event naming the file and the number of bytes scrubbed.
+3. Fail the slice close (or return with an explicit warning) if scrubbing changed the file's line count by more than 0 — that would indicate the null bytes were within a line and the scrub collapsed structure (e.g., removed a newline pair).
+
+**Workaround (applies now):** After any multi-edit sequence on files via the Edit tool, run the scrub pattern before considering the file "done." The project-manager and build-orchestrator skills already carry this discipline for README `## Log` edits; extend it tacitly to test files and any other file where the agent touches trailing regions.
+
+**Owning slice / skill:** A dedicated `skill-creator`-driven edit pass on build-closeout (and possibly build-execution) to institutionalize the scrub. Related to `BUILD-CLOSEOUT-COMMIT-GATE` — both are in the same "closeout should have more gates before declaring done" family.
+
+**Priority:** 🟡 Medium — silent-corruption risk even if the immediate pytest-collection case is loud; the invariant is worth automating.
+
+---
+
 ### BUILD-CLOSEOUT-COMMIT-GATE (2026-04-23) — build-closeout should verify codebase commit state before close
 
 **Finding:** Slice 3 (Packet 2026-04-21-03, WBS APP-07) closed on 2026-04-23 in project-management state — Design Schematic marked `APP-07 ✓`, README `## Build State` advanced to Closed, this ISSUES.md file gained the two Slice-3-discovered EOL entries (which Slice 4 subsequently closed), and Build-Packets.md got its Closeout Result block. But the actual codebase commit was never made. Slice 3's new code (`app/main.py` router wiring, `app/api/health.py`, `tests/test_health_endpoints.py`) sat in the working tree as uncommitted changes for the entire duration of Slice 4 (three days), and was only captured in git when Slice 4's evaluate gate discovered the state inconsistency and routed the bundled Commit 1 (`48b49fa`) in lieu of the pristine Slice 4 atomic commit the packet had intended.
@@ -359,6 +396,28 @@ Ownership disposition for the newly-surfaced items:
 ---
 
 ## ✅ Closed / Resolved Issues
+
+### BUG-001 (2026-04-23) — `To` undefined in `app/api/sms_webhook.py` outbound-log branches
+
+**Status:** Closed — resolved by **Packet 2026-04-23-07 (Slice 7, WBS APP-03 + TST-02)** on 2026-04-23. All three `from_phone=To` sites in `handle_opt_out`, `handle_help_request`, and `handle_no_response` replaced with `from_phone=settings.TWILIO_PHONE_NUMBER`; `from app.infra.settings import settings` added at the top of the module. The `"app/api/sms_webhook.py" = ["F821"]` per-file-ignore entry removed from `pyproject.toml` in the same commit per the Slice-5 owning-slice-removable invariant.
+
+**Originally discovered:** 2026-04-19 by build-evaluate on Build slice 2026-04-08-01 (Packet 2026-04-08-01).
+
+**Symptom (pre-fix):** Three outbound `MessageLog` builders referenced an undefined name `To`:
+
+- `app/api/sms_webhook.py:182` in `handle_opt_out` (STOP reply)
+- `app/api/sms_webhook.py:222` in `handle_help_request` (HELP reply)
+- `app/api/sms_webhook.py:295` in `handle_no_response` (NO reply)
+
+Any code path that reached one of these branches raised `NameError` at runtime after the `twilio_client.send_sms` call but before the `MessageLog` row was inserted — outbound logging was silently broken for STOP, HELP, and NO replies.
+
+**Root cause:** The helper functions `handle_opt_out(from_phone, db)`, `handle_help_request(from_phone, db)`, and `handle_no_response(from_phone, message_body, db)` do not receive the inbound `To` form parameter that the parent `handle_inbound_sms` extracts. The outbound-log builders should have sourced our own Twilio-owned number from `settings.TWILIO_PHONE_NUMBER`, not referenced a name that was never in scope.
+
+**Resolution mechanism:** Replace `from_phone=To` with `from_phone=settings.TWILIO_PHONE_NUMBER` at the three sites. New regression test suite `tests/test_sms_webhook_outbound_log.py` covers all three reply paths (STOP / HELP / NO) and asserts (a) no `NameError` is raised and (b) the outbound `MessageLog` row is constructed with the correct `from_phone`. The fix lands in the same slice as the new `TwilioSignatureMiddleware` (APP-03) — those handlers are now reachable only via a validly-signed Twilio webhook, so the regression has both a unit-test-level guard and a request-path-level guard against re-introduction.
+
+**Grandfather-note history (now historical):** Between Slice 5 (2026-04-23) and Slice 7 (2026-04-23) the three F821 findings were grandfathered via `pyproject.toml` `"app/api/sms_webhook.py" = ["F821"]` so that the ruff CI gate from QA-01 could turn on clean. That grandfather was explicitly temporary and tied to this slice as the named owning-slice exit path — and it was removed in the same commit as the code fix, exactly as the Slice-5 discipline requires.
+
+---
 
 ### RUFF-CRLF-BASELINE-47 (2026-04-23) — 47 text files drift LF → CRLF on every git operation
 

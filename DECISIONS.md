@@ -13,6 +13,95 @@ companion project-management folder at
 
 ## [Unreleased]
 
+### 2026-04-23 — Twilio signature middleware URL strategy — `TWILIO_WEBHOOK_BASE_URL` as canonical signing URL, `request.url` as warn-logged fallback
+
+**Context:** Build Slice 2026-04-23-07 (WBS APP-03) added
+`TwilioSignatureMiddleware` to enforce Twilio signature verification on
+`/sms/*` and `/twilio/*`. Twilio's signing algorithm is deterministic:
+HMAC-SHA1 of `url + "".join(f"{k}{v}" for k, v in sorted(params.items()))`
+keyed by the account's auth token. The subtle field is **`url`**: Twilio
+signs the *public URL it POSTed to*. In the project's target deployment
+the FastAPI service runs on `http://localhost:8000` inside the Windows
+server and is exposed to the public internet through a Cloudflare Tunnel
+(a fourth NSSM-managed service, `CancellationChatbotTunnel`, per the
+README's production-deployment section). Twilio invokes something like
+`https://webhooks.tpccc.example.com/sms/inbound`. FastAPI sees
+`http://localhost:8000/sms/inbound`. Signature verification against the
+internal URL string fails every time — the signed URL and the verified
+URL are literally different strings.
+
+Three strategies were considered:
+
+1. **Explicit `TWILIO_WEBHOOK_BASE_URL` setting** — the operator
+   declares the public base URL in `.env`; the middleware concatenates
+   it with the request path + query. Simple, no trust model needed.
+2. **Trust `X-Forwarded-Proto` + `X-Forwarded-Host` headers** — inspect
+   the headers the proxy layer injects and reconstruct the URL. Requires
+   the proxy to be configured to inject them *and* requires the app to
+   trust that no upstream injected fake values. Adds a security-model
+   surface area (who can set `X-Forwarded-*`?) for marginal convenience
+   gain.
+3. **Dynamic URL probe** — ping a known-good webhook end-to-end at
+   startup to discover the public URL. Too cute, brittle, requires an
+   external-facing contract at boot time.
+
+**Decision:** Option 1. The middleware prefers
+`settings.TWILIO_WEBHOOK_BASE_URL` (already declared as `Optional[str]`
+in `app/infra/settings.py`) as the scheme-plus-host authoritative source
+for signature-verification URLs. It concatenates the base with the
+request's `.path` + optional `.query` to produce the canonical string
+Twilio signed against:
+
+```python
+canonical = settings.TWILIO_WEBHOOK_BASE_URL.rstrip("/") + request.url.path
+if request.url.query:
+    canonical += "?" + request.url.query
+```
+
+When `TWILIO_WEBHOOK_BASE_URL` is unset the middleware falls back to
+`str(request.url)` — the internal FastAPI URL. This fallback is
+deliberately warn-logged (`webhook.signature.url_fallback` structured
+event with `reason="TWILIO_WEBHOOK_BASE_URL unset"`) and documented as
+"fine for local development, broken for production behind a proxy." The
+fallback exists so developers can smoke-test the middleware locally
+without needing to invent a fake public URL; it is never the right
+configuration for a production deployment.
+
+**Consequences:**
+
+- **`TWILIO_WEBHOOK_BASE_URL` is effectively required for production.**
+  It remains `Optional[str]` in the settings schema to avoid a breaking
+  config-schema change for any existing deployment, but the `.env.example`
+  shipped with the project documents it as required-for-production, and
+  the RUNBOOK's future "New Deployment" section (DOC-03 territory) will
+  name setting it as a prerequisite.
+- **No `X-Forwarded-*` trust configuration needed.** The decision avoids
+  the "whose `X-Forwarded-*` do we trust?" rabbit hole entirely.
+  Cloudflare Tunnel, NGINX reverse proxies, bare uvicorn, and local
+  `uvicorn --host 127.0.0.1` all work the same way: point
+  `TWILIO_WEBHOOK_BASE_URL` at the public base, and the middleware is
+  indifferent to what the proxy layer does.
+- **Fallback is always observable.** Every warn-level
+  `webhook.signature.url_fallback` event emitted in production is a
+  configuration bug to fix — the fallback produces a URL string that
+  will never match what Twilio signed, so signature verification will
+  fail 100% of the time on that path. Operators can `grep` the
+  structured log for `webhook.signature.url_fallback` to detect
+  misconfiguration immediately, rather than wondering why all Twilio
+  webhooks are 403ing.
+- **Test fixtures set `TWILIO_WEBHOOK_BASE_URL` explicitly.** The
+  Slice 7 test suite (`tests/test_twilio_signature_middleware.py`)
+  monkeypatches `settings.TWILIO_WEBHOOK_BASE_URL` to a known value
+  (`https://webhooks.test.example.com`) before constructing the
+  `TestClient`. This ensures the test's computed signatures and the
+  middleware's expected signatures are derived from the same URL string.
+- **Cross-reference:** `app/api/middleware.py` module docstring
+  summarizes the strategy inline; `README.md` "Webhook authentication"
+  subsection documents it at the user-facing level; `Build-Packets.md`
+  Packet 2026-04-23-07 captures the scope and boundary audit.
+
+---
+
 ### 2026-04-23 — Grandfathered ruff per-file ignores as the QA-01 gate-activation discipline
 
 **Context:** Build Slice 2026-04-23-05 (WBS QA-01) turned on the repo's ruff-check + ruff-format CI gate. At pre-execution scope-gate review, build-execution surfaced that the packet's original four-entry `[tool.ruff.lint.per-file-ignores]` plan would grandfather only 27 of the 39 baseline findings — leaving 11 unresolved and making Acceptance Check #2 (`ruff check .` reports 0 findings) unsatisfiable. Jonathan was presented with three options (grandfather all 39 / build a smarter allowlist-aware gate / defer QA-01 until the owning slices finish) and pushed back with *"why can't we just fix the errors?"* — the right question. A fourth option emerged from that pushback and was approved as the Scope Amendment: **fix what's cheap and safe in-slice; grandfather only the findings whose real fix requires feature work, DB roundtrip tests, or a blocked upstream dependency.**

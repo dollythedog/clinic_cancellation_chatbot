@@ -38,21 +38,15 @@ ignore = [
 # (b) remove the corresponding entry here. See `ISSUES.md` for the full
 # triage narrative and owning-slice assignments.
 #
-# Baseline captured 2026-04-23 (ruff 0.15.9, 9 findings grandfathered).
+# Baseline captured 2026-04-23 (ruff 0.15.9; 6 findings grandfathered
+# after Slice 2026-04-23-07 closed the F821 × 3 partition by fixing
+# BUG-001 at source and removing that grandfather entry).
 [tool.ruff.lint.per-file-ignores]
 # UP042 × 4 — `class X(str, enum.Enum)` should migrate to `enum.StrEnum`.
 # Safe migration requires DB round-trip tests + API JSON round-trip tests
 # to catch any MRO / serialization differences. Owning slice: dedicated
 # data-layer cleanup slice (see ISSUES `RUFF-UP042`).
 "app/infra/models.py" = ["UP042"]
-
-# F821 × 3 — `To` undefined in `handle_opt_out`, `handle_help_request`,
-# and the error responder. This is BUG-001, a real runtime NameError,
-# NOT a style issue. Fix requires a regression test covering all three
-# reply paths with Twilio signature middleware. Owning slice: APP-03
-# (Twilio signature middleware), blocked on Open Question 3 (Twilio BAA).
-# See ISSUES `BUG-001`.
-"app/api/sms_webhook.py" = ["F821"]
 
 # F841 × 2 — unused `patient` and `message` locals inside the incomplete
 # body of `_cancel_other_offers`. Those locals will be consumed once the

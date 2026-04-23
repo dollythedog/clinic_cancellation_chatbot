@@ -196,6 +196,52 @@ clinic_cancellation_chatbot/
 * Exception handling and error recovery
 * Secure credential management (environment variables)
 
+### Webhook authentication
+
+All inbound Twilio webhooks are verified cryptographically by the
+[`TwilioSignatureMiddleware`](app/api/middleware.py) registered on the
+FastAPI application. **Protected path prefixes:**
+
+* `/sms/*` — inbound SMS from patients
+* `/twilio/*` — Twilio delivery-status callbacks
+
+The middleware requires a valid `X-Twilio-Signature` header on every
+POST to a protected path. Missing or invalid signatures are rejected
+with HTTP 403 before any route handler runs — no database write, no
+log of the inbound body, no chance for a forged request to impersonate
+Twilio. All other paths (`/healthz`, `/readyz`, `/health`, `/`, `/docs`,
+`/admin/*`) pass through unmodified.
+
+The signature is computed by Twilio as the HMAC-SHA1 of the canonical
+webhook URL concatenated with the sorted form-encoded body parameters,
+keyed with the account's auth token. The middleware uses
+[`twilio.request_validator.RequestValidator`](https://www.twilio.com/docs/usage/webhooks/webhooks-security)
+to re-compute the expected signature against `settings.TWILIO_AUTH_TOKEN`
+and compares in constant time.
+
+**Canonical-URL strategy.** Twilio signs against the public URL it
+POSTed to. Behind the Cloudflare Tunnel + NSSM deployment on the
+Windows server, that public URL's scheme and host differ from what
+FastAPI sees internally. Set `TWILIO_WEBHOOK_BASE_URL` in `.env` to the
+public base (e.g. `https://webhooks.tpccc.example.com`) and the
+middleware will concatenate it with the request's path + query to
+reconstruct the exact URL Twilio signed. If `TWILIO_WEBHOOK_BASE_URL`
+is unset the middleware falls back to the internal `request.url` and
+emits a warn-level `webhook.signature.url_fallback` event — fine for
+local development, but every public deployment must set the base URL
+or every signature verification will fail. See
+[`DECISIONS.md`](DECISIONS.md) 2026-04-23 "Twilio signature middleware
+URL strategy" for the full rationale.
+
+Local reproduction (using the `twilio` Python package the project
+already pins in `requirements.txt`):
+
+```python
+from twilio.request_validator import RequestValidator
+validator = RequestValidator(settings.TWILIO_AUTH_TOKEN)
+signature = validator.compute_signature(url, params)
+```
+
 ---
 
 ## 📊 Database Schema

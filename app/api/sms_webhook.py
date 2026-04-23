@@ -22,6 +22,7 @@ from app.core.templates import (
 )
 from app.infra.db import DbSession
 from app.infra.models import MessageDirection, MessageLog, MessageStatus, PatientContact
+from app.infra.settings import settings
 from app.infra.twilio_client import _mask_phone, twilio_client
 from utils.time_utils import now_utc
 
@@ -176,10 +177,15 @@ def handle_opt_out(from_phone: str, db: Session) -> Response:
     try:
         twilio_client.send_sms(to=from_phone, body=response_text)
 
-        # Log outbound message
+        # Log outbound message. BUG-001 fix (Slice 2026-04-23-07): the
+        # outbound ``from_phone`` is our own Twilio-owned number sourced
+        # from settings, not the inbound webhook's ``To`` form field
+        # (which the helper doesn't receive as a parameter and isn't
+        # in scope here — the prior code raised NameError on every
+        # STOP path).
         log_entry = MessageLog(
             direction=MessageDirection.OUTBOUND,
-            from_phone=To,  # Our number
+            from_phone=settings.TWILIO_PHONE_NUMBER,
             to_phone=from_phone,
             body=response_text,
             status=MessageStatus.SENT,
@@ -216,10 +222,12 @@ def handle_help_request(from_phone: str, db: Session) -> Response:
     try:
         twilio_client.send_sms(to=from_phone, body=response_text)
 
-        # Log outbound message
+        # Log outbound message. BUG-001 fix (Slice 2026-04-23-07): same
+        # pattern as ``handle_opt_out`` — source ``from_phone`` from
+        # ``settings.TWILIO_PHONE_NUMBER``, not the undefined ``To``.
         log_entry = MessageLog(
             direction=MessageDirection.OUTBOUND,
-            from_phone=To,  # Our number
+            from_phone=settings.TWILIO_PHONE_NUMBER,
             to_phone=from_phone,
             body=response_text,
             status=MessageStatus.SENT,
@@ -289,10 +297,13 @@ def handle_no_response(from_phone: str, message_body: str, db: Session) -> Respo
     try:
         twilio_client.send_sms(to=from_phone, body=response_text)
 
-        # Log outbound message
+        # Log outbound message. BUG-001 fix (Slice 2026-04-23-07): same
+        # pattern as ``handle_opt_out`` / ``handle_help_request`` —
+        # source ``from_phone`` from ``settings.TWILIO_PHONE_NUMBER``,
+        # not the undefined ``To``.
         log_entry = MessageLog(
             direction=MessageDirection.OUTBOUND,
-            from_phone=To,  # Our number
+            from_phone=settings.TWILIO_PHONE_NUMBER,
             to_phone=from_phone,
             body=response_text,
             status=MessageStatus.SENT,

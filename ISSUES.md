@@ -201,7 +201,20 @@ Ownership disposition for the newly-surfaced items:
 - `seed_test_real.py:132` (F841 × 1) → QA-01 (trivial delete)
 - `dashboard/app.py` 11th E712 → APP-08 (the dashboard-findings group grows from 10 to 11; per-file ignore disposition unchanged)
 
-### RUFF-FORMAT-BASELINE-23 (2026-04-20)
+### RUFF-FORMAT-BASELINE-23 → RUFF-FORMAT-BASELINE-6 (updated 2026-04-23 by Slice 4)
+
+**Update (2026-04-23 — Slice 4 / Packet 2026-04-23-04 / WBS QA-04 closeout):** The baseline has shrunk from 23 to **6** as an incidental side effect of the EOL normalization. Slice 4's forced working-tree re-checkout (`git rm --cached -r . && git reset --hard`) rewrote every tracked file with LF line endings per the new `.gitattributes` `* text=auto eol=lf` policy. Ruff's format engine evaluates line endings when computing its canonical output; with LF working-tree content now matching what ruff emits by default, 17 of the 23 previously-flagged files pass `ruff format . --check` cleanly without any explicit reformatting.
+
+**Remaining 6 files (all Python, still pre-existing formatting drift — out of scope for any slice except a dedicated QA pass):**
+`dashboard/app.py`, `scripts/create_test_cancellation.py`, `scripts/direct_test.py`, `scripts/process_latest_cancellation.py`, `scripts/seed_test_real.py`, `scripts/simulate_response.py`.
+
+**Owning slice:** unchanged — **QA-01** (quality-automation hardening). One `ruff format` run on those 6 files closes the remainder.
+
+**Priority:** 🟢 Low (down from 🟡 Medium pre-Slice-4 — 74% of the baseline is already resolved).
+
+---
+
+### RUFF-FORMAT-BASELINE-23 (2026-04-20) — original finding, preserved for history
 
 **Finding:** `ruff format . --check` reports 23 files would be reformatted. All 23 are in files untouched by Slice 2. The ten files authored or edited by Slice 2 (`app/main.py`, `app/infra/settings.py`, `app/infra/logging_config.py`, `app/infra/twilio_client.py`, `app/core/orchestrator.py`, `app/core/scheduler.py`, `app/api/admin.py`, `app/api/sms_webhook.py`, `app/api/status_webhook.py`, `tests/test_logging_config.py`) all report as "already formatted."
 
@@ -210,9 +223,11 @@ Ownership disposition for the newly-surfaced items:
 
 **Classification:** Pre-existing formatting drift. Slice 1's closeout claimed "31 files already formatted" — that claim was either mistaken or the ruff version drifted between sessions. Slice 2 did not introduce any of these failures; they are all in files Slice 2 did not edit.
 
-**Suggested fix:** One line — `ruff format .` — in a scoped QA slice. Not appropriate to carry in a behavior slice.
+**Suggested fix (original):** One line — `ruff format .` — in a scoped QA slice. Not appropriate to carry in a behavior slice.
 
-**Owning slice:** **QA-01** (quality-automation hardening). Natural companion to the existing ruff-check baseline triage.
+**Partial resolution 2026-04-23:** 17 of the 23 files closed by Slice 4's LF normalization side effect — see the RUFF-FORMAT-BASELINE-6 update above.
+
+**Owning slice:** **QA-01** (quality-automation hardening) for the remaining 6.
 
 ### RUFF-ORDER-SWAP (2026-04-20) — import-order sensitivity of mechanical logger swaps
 
@@ -231,6 +246,34 @@ Ownership disposition for the newly-surfaced items:
 ## 📐 EOL & Repository Hygiene
 
 *No open issues in this category — the two entries previously listed here (`RUFF-CRLF-BASELINE-47` and `EOL-AUTOCRLF-ROOT-CAUSE`) were resolved by Build Slice 2026-04-23-04 (WBS QA-04). Their closed forms live under `## ✅ Closed / Resolved Issues` below.*
+
+---
+
+## 🔧 Build-System & Skill-Level Follow-Ups
+
+### BUILD-CLOSEOUT-COMMIT-GATE (2026-04-23) — build-closeout should verify codebase commit state before close
+
+**Finding:** Slice 3 (Packet 2026-04-21-03, WBS APP-07) closed on 2026-04-23 in project-management state — Design Schematic marked `APP-07 ✓`, README `## Build State` advanced to Closed, this ISSUES.md file gained the two Slice-3-discovered EOL entries (which Slice 4 subsequently closed), and Build-Packets.md got its Closeout Result block. But the actual codebase commit was never made. Slice 3's new code (`app/main.py` router wiring, `app/api/health.py`, `tests/test_health_endpoints.py`) sat in the working tree as uncommitted changes for the entire duration of Slice 4 (three days), and was only captured in git when Slice 4's evaluate gate discovered the state inconsistency and routed the bundled Commit 1 (`48b49fa`) in lieu of the pristine Slice 4 atomic commit the packet had intended.
+
+**Impact:**
+
+- **Slice 4's "single atomic commit" constraint** was reinterpreted rather than satisfied literally. Slice 4's content contribution did land in one commit, but it was bundled with Slice 3's catch-up rather than standing alone.
+- **Evaluate-gate rework.** Build-evaluate had to diagnose the bundled state, reroute Jonathan through a two-commit + re-checkout sequence (Commit 1 = bundled content; "Commit 2" degenerated to a `git rm --cached -r . && git reset --hard` because the index was already LF), and reinterpret AC4. Each step introduced extra round-trip latency and cognitive overhead.
+- **Historical attribution.** Git log now shows Slice 3's code under Commit `48b49fa` ("Slice 3 codebase catch-up + Slice 4 pre-normalization") rather than a dedicated Slice 3 commit. A reader looking at Slice 3's scope in Build-Packets.md will not find a matching commit in `git log --grep "APP-07"` — the attribution bridge is the commit message body, not the subject line.
+
+**Root cause:** The current build-closeout skill updates project-management state (Design Schematic, README, ISSUES, CHANGELOG, Build-Packets.md) but does not verify that the codebase itself is in a clean committed state matching the claimed closure. There is no commit-verification gate between "slice closed in docs" and "slice's code in git."
+
+**Countermeasure (proposed — owning slice: a dedicated skill-edit pass on build-closeout):** Add a Step 1.5 "Commit Verification" between Step 1 (verify PASS) and Step 2 (mark WBS items Done). At Step 1.5, build-closeout should:
+
+1. Run `git -C <codebase-path> status --porcelain=v1 -uall` and parse the output.
+2. If the output is non-empty — i.e., any file listed as staged, modified, or untracked under the codebase path — stop and escalate. Do NOT mark WBS items Done, do NOT advance the README state, do NOT write the Closeout Result block. Return with a message like: *"Codebase has uncommitted work: [list]. Close operation blocked. Jonathan must commit (or explicitly stash with rationale) before the slice can close."*
+3. Optionally: if Jonathan acknowledges the uncommitted state as intentional scope for a future slice, allow close with an explicit flag like `--allow-uncommitted "Rationale..."` which writes the rationale into the Closeout Result block.
+
+**Secondary countermeasure (tactical, applies now):** Project-manager's Phase 2 status-read should read `git status` output for each App Development project in Executing → Build and flag projects whose working tree disagrees with their README Build State. This catches the Slice-3 kind of discrepancy at the next portfolio-briefing boundary rather than waiting for the next slice's evaluate gate.
+
+**Owning slice / skill:** A dedicated `skill-creator`-driven edit pass on the build-closeout SKILL.md. Not blocking Iteration 1 exit. Not a code defect in the Cancellation Chatbot codebase itself — this is a Department-5 (skill system) process issue, tagged here only because Slice 4 surfaced it.
+
+**Priority:** 🟡 Medium — no immediate runtime risk, but repeated occurrence will erode the slice-attribution integrity of the git history and compound evaluate-gate overhead on future slices.
 
 ---
 

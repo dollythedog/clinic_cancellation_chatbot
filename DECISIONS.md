@@ -13,6 +13,34 @@ companion project-management folder at
 
 ## [Unreleased]
 
+### 2026-04-23 — Renormalization is a working-tree operation, not a second commit (mental-model refinement from Slice 4 evaluate)
+
+**Context:** Build Slice 2026-04-23-04 (WBS QA-04) was designed around the assumption that `git add --renormalize .` would stage a large diff (the 47-file RUFF-CRLF-BASELINE-47 LF-ification) and produce a second atomic commit dedicated to the renormalization. At evaluate time, `git add --renormalize .` was a **no-op** — it staged nothing. Investigation via `git ls-files --eol` showed every file already had `i/lf w/crlf`: **the index was LF; only the working tree was CRLF.**
+
+Follow-up investigation determined that Git-for-Windows with `core.autocrlf=true` (the installer default) has been converting CRLF → LF on every `git add` throughout the project's history. The repo's committed tree has been LF for years. The "CRLF drift" documented in `ISSUES.md` § `RUFF-CRLF-BASELINE-47` / `EOL-AUTOCRLF-ROOT-CAUSE` was always a **working-tree artifact** — each `git checkout` converted the LF index content back to CRLF in the working tree via `core.autocrlf`, and `git diff` then saw CRLF-vs-LF as meaningful changes. `.gitattributes` with `eol=lf` wins over `core.autocrlf` on **new** checkouts but does not retroactively rewrite existing working-tree files.
+
+**Decision:** The canonical recipe for "apply a newly-committed `.gitattributes` to the existing working tree" is:
+
+```bash
+git rm --cached -r .
+git reset --hard
+```
+
+`git rm --cached -r .` clears the index of all tracked entries. `git reset --hard` restores the index from HEAD and overwrites every working-tree file from the restored index, applying `.gitattributes` smudge filters during the checkout step. After this, the working tree matches the policy (LF for non-`.ps1`, CRLF for `.ps1`), and future checkouts stay aligned because `.gitattributes` is now committed.
+
+This recipe **does not produce a commit**. It is a pure working-tree side effect of the already-committed `.gitattributes` policy. It is safe to run when `git status` reports the tree clean; it is destructive (via `--hard`) if uncommitted work exists.
+
+**Consequences:**
+
+- **Mental model refinement:** "EOL drift" in this codebase means working-tree drift, not index drift. Commands that operate on the index (`git add`, `git add --renormalize`, `git ls-files --eol` on the `i/` column) will show everything as LF and healthy, while `git diff` and `git ls-files --eol` on the `w/` column tell the true drift story.
+- **Slice 4's "single atomic commit" constraint** was reinterpreted: Slice 4's content contribution (`.gitattributes` + docs) landed in Commit `48b49fa` (which also bundled a Slice 3 catch-up per `ISSUES.md` § `BUILD-CLOSEOUT-COMMIT-GATE`). The renormalization was not a commit at all — it was a post-commit working-tree-alignment operation. Future slices that are purely repo-hygiene changes should scope their commit count accordingly.
+- **Operator recovery on new workstations:** if a contributor clones the repo fresh on Windows with `core.autocrlf=true`, the clone's checkout applies `.gitattributes` `eol=lf` and the working tree is LF from the start — no drift, no recovery needed. Drift only arises if a contributor's prior `core.autocrlf` state created CRLF files that pre-date a policy change. The recipe above handles that one-time case.
+- **The earlier DECISIONS entry** (`2026-04-23 — .gitattributes + git add --renormalize . as the canonical repo EOL policy`, above in `[Unreleased]`) was slightly wrong in its consequences section — it implied `git add --renormalize .` was the operator recovery procedure. It should be read as "`git rm --cached -r . && git reset --hard` (for the one-time working-tree realignment) **plus** `.gitattributes` winning over `core.autocrlf` on all future checkouts (the durable fix)." Leaving the earlier entry in place for historical record; this entry is the corrected model.
+
+**Entry criterion for every future slice (refined):** the working tree has no `w/crlf` on non-`.ps1` files at slice open. Verify with `git ls-files --eol | grep w/crlf | grep -v "\.ps1$"` — expect empty output.
+
+---
+
 ### 2026-04-23 — `.gitattributes` + `git add --renormalize .` as the canonical repo EOL policy
 
 **Context:** Build Slice 2026-04-23-04 (WBS QA-04). The repository had no

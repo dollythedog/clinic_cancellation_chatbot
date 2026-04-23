@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+*Slice 2026-04-23-04 closed 2026-04-23 on Revise Attempt 0; all 13 Build Packet acceptance checks satisfied; WBS QA-04 marked Done on the Design Schematic (Draft + Final §5.G tables and §9 WBS Completion Log). Iteration 1 progress: 7 / 38 WBS items closed. Three key findings surfaced at evaluate + close: (1) the renormalization was a working-tree re-checkout (`git rm --cached -r . && git reset --hard`), not a second commit — the repo's index had been LF all along via historical `core.autocrlf=true` convert-on-add behavior, and the documented "CRLF drift" lived purely in the working tree (new DECISIONS entry "Renormalization was a working-tree operation, not a second commit" captures the refined mental model). (2) Slice 3's project-management close (2026-04-23) did not include a codebase commit, so Slice 3's code (`app/main.py`, `app/api/health.py`, `tests/test_health_endpoints.py`) sat uncommitted until Slice 4 bundled it into Commit `48b49fa` alongside Slice 4's own `.gitattributes` + docs; new ISSUES entry `BUILD-CLOSEOUT-COMMIT-GATE` scopes the build-closeout skill enhancement needed to prevent recurrence. (3) `ruff format --check` baseline shifted 23 → 6 as an incidental side effect of the LF normalization — 17 Python files were cleaned up for free; new ISSUES entry `RUFF-FORMAT-BASELINE-6` reconciles the count and lists the 6 remaining files. Two ISSUES closed by this slice: `RUFF-CRLF-BASELINE-47` and `EOL-AUTOCRLF-ROOT-CAUSE`, both resolved by the `.gitattributes` policy landing durably.*
+
 ### Added — Build slice 2026-04-23-04 (EOL Normalization, WBS QA-04)
 
 - `.gitattributes` — **created** at repo root. Declares the canonical

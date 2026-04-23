@@ -1,0 +1,56 @@
+# ============================================================================
+# Test CI Gate — clinic_cancellation_chatbot
+# ============================================================================
+# Runs pytest (no flags) on every push to main and on every pull_request
+# targeting main. The single pytest invocation must exit 0 for the job to
+# pass; the job blocks merge on failure.
+#
+# Owning work package: QA-02 (Design Schematic §5.G Quality Automation).
+# Landed: Build Slice 2026-04-23-06 (Packet 2026-04-23-06). Companion to
+# the lint gate landed in Slice 2026-04-23-05; together they operationalize
+# the Iteration-1 exit criterion "ruff check / ruff format --check / pytest
+# all green" (Design Schematic §6).
+#
+# Local reproduction (exact same command):
+#
+#     pytest
+#
+# The pytest version is sourced from requirements.txt (currently
+# pytest==7.4.3). This workflow installs the full project dependency tree
+# rather than a standalone pytest install because the test suite imports
+# from `app.*` and requires the application's runtime dependencies
+# (SQLAlchemy, psycopg, pydantic-settings, structlog, FastAPI). Any
+# pytest version bump must be reflected in requirements.txt AND in any
+# developer documentation that names a version — the whole project moves
+# together, same discipline applied to ruff in lint.yml.
+# ============================================================================
+
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade "pip<25" && python -m pip install -r requirements.txt
+
+      - name: pytest
+        run: pytest

@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+*Slice 2026-04-23-06 closed 2026-04-23 on Revise Attempt 0; all 12 Build Packet acceptance checks satisfied; WBS TST-01 and QA-02 marked Done on the Design Schematic (Draft + Final §5.F Testing / §5.G Quality Automation tables and §9 WBS Completion Log). Iteration 1 progress: 10 / 38 WBS items closed. Two outcomes: (1) `.github/workflows/test.yml` is live, blocking merges on any non-zero exit from `pytest`; pytest is pinned to 7.4.3 via `requirements.txt` and the workflow installs the full project dependency tree because the test suite imports `app.*` modules at collection time. Together with `.github/workflows/lint.yml` from Slice 5, the Design Schematic §6 Iteration-1 exit criterion "All build acceptance checks pass: `ruff check`, `ruff format --check`, `pytest` all green" is now fully operationalized as merge-blocking CI. (2) TST-01 "confirm the environment hasn't drifted" obligation attested against the accumulated Slice-1-through-5 evidence (stable 24/24-green across two weeks, no drift encountered since the November 2025 pause). Zero scope creep: exactly 3 files touched (`.github/workflows/test.yml` created; `README.md` Continuous-Integration subsection extended; `CHANGELOG.md` Slice 6 Added block inserted). No application source, test content, `pyproject.toml`, `requirements.txt`, or `lint.yml` edits. No new ISSUES entries (the pre-existing `PYTEST-DEPRECATION-WARNINGS` tracked from Slice 5 remains open and scoped to a later slice); no new DECISIONS entries (the Slice-5 version-pin discipline already covered the parallel pytest-version case by extension).*
+
+### Added — Build slice 2026-04-23-06 (Pytest CI Gate + Pytest Suite Baseline Attestation, WBS QA-02 / TST-01)
+
+- `.github/workflows/test.yml` — **created.** Runs `pytest` (no flags)
+  on every push to `main` and every pull request targeting `main`.
+  Blocks merge on non-zero exit from the single pytest invocation.
+  Installs the full project dependency tree from `requirements.txt`
+  (the test suite imports `app.*` modules and requires the runtime
+  dependency tree — SQLAlchemy, psycopg, pydantic-settings, structlog,
+  FastAPI — at collection time, not just pytest itself). Pins Python
+  to 3.11 via `actions/setup-python@v5`; pytest version is sourced from
+  `requirements.txt` (`pytest==7.4.3`), matching the project-wide
+  version-pin discipline established for ruff in Slice 2026-04-23-05.
+- `README.md` — extended the `Continuous Integration` subsection
+  introduced in Slice 2026-04-23-05 to document the new test gate:
+  local reproduction command (`pytest`), the push / pull_request
+  triggers, and the pytest version-pin rule. The two workflows together
+  (`lint.yml` + `test.yml`) operationalize the Iteration-1 exit
+  criterion from the Design Schematic §6 ("`ruff check`, `ruff format
+  --check`, `pytest` all green"); a merge to `main` is now blocked
+  unless all three commands exit 0.
+- TST-01 attestation — the existing pytest suite has run green
+  continuously across Slices 1 (10/10), 3 (18/18), 4 (18/18 in 2.59 s),
+  and 5 (24/24 in 2.06 s) with no environmental drift encountered
+  since the November 2025 pause. TST-01's "confirm the environment
+  hasn't drifted" obligation is satisfied against the Slice 5 24-test
+  baseline; `.github/workflows/test.yml` locks the invariant in for
+  every subsequent merge.
+
+No application source, test content, `pyproject.toml`, `requirements.txt`,
+or `.github/workflows/lint.yml` edits in this slice — this is a
+tooling + documentation slice only, completing the CI automation trio
+started in Slice 2026-04-23-05.
+
 *Slice 2026-04-23-05 closed 2026-04-23 on Revise Attempt 0; all 14 Build Packet acceptance checks satisfied; WBS QA-01 marked Done on the Design Schematic (Draft + Final §5.G Quality Automation tables and §9 WBS Completion Log). Iteration 1 progress: 8 / 38 WBS items closed. Three key outcomes: (1) `ruff check .` reports 0 findings and `ruff format . --check` reports 0 files need reformatting — both for the first time in the project's history; the Design Schematic §6 Iteration-1 exit criterion "All build acceptance checks pass: `ruff check`, `ruff format --check` … all green" is satisfied. (2) The slice pivoted mid-execution from the packet's original "grandfather-27" plan to the "fix what's cheap, grandfather what's risky" Option-4 discipline after Jonathan asked why more findings couldn't simply be fixed — 30 of 39 findings fixed outright (B008 × 8 via `Annotated[..., Depends(...)]`, E712 × 15 via `.is_(…)`, E402 × 5 via reorder + `# noqa`, F841 × 2 via dead-code delete); 9 grandfathered via `pyproject.toml` per-file-ignores (UP042 × 4 owned by data-layer cleanup, F821 × 3 owned by APP-03 / BUG-001, F841 × 2 owned by `_cancel_other_offers` completion). Each grandfather entry has a named owning-slice exit path. (3) `.github/workflows/lint.yml` is live, blocking merges on any non-zero exit from ruff check or ruff format --check; ruff is pinned to 0.15.9 across `requirements.txt` and the workflow with a project-wide bump discipline recorded in DECISIONS. One new ISSUES entry surfaced from pytest-warning inspection during evaluate: `PYTEST-DEPRECATION-WARNINGS` (pre-existing SQLAlchemy `declarative_base` + Pydantic class-based `Config` — low priority, scoped to the data-layer cleanup and a future deprecation-sweep slice).*
 
 ### Added — Build slice 2026-04-23-05 (Lint Hygiene Baseline + Ruff CI Gate, WBS QA-01)

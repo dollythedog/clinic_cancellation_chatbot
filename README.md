@@ -651,6 +651,36 @@ specific file, not the rule set as a whole. See the 2026-04-23
 `DECISIONS.md` entry titled *"Grandfathered ruff per-file ignores as
 the QA-01 gate-activation discipline"* for the full policy.
 
+Pushes and pull requests also trigger the
+[`test`](.github/workflows/test.yml) GitHub Actions workflow, which
+installs the full project dependency tree from
+[`requirements.txt`](requirements.txt) and runs:
+
+```bash
+pytest
+```
+
+Reproduce locally — from the repository root — with the exact same
+command. Expected to exit 0 with the current 24-test suite on a clean
+working tree.
+
+The CI job pins pytest to the version declared in
+[`requirements.txt`](requirements.txt) (currently `pytest==7.4.3`).
+Bumping pytest follows the same multi-file discipline ruff uses: update
+the version in `requirements.txt` and in any developer documentation
+that names a version in a single commit so the gate, developer
+workstations, and the test suite all move together. The workflow
+installs the full dependency tree (not just pytest) because the test
+suite imports `app.*` modules and needs SQLAlchemy, psycopg,
+pydantic-settings, structlog, and FastAPI at collection time.
+
+Together with the [`lint`](.github/workflows/lint.yml) workflow, the
+[`test`](.github/workflows/test.yml) workflow operationalizes the
+Iteration-1 exit criterion recorded in the Design Schematic §6: *"All
+build acceptance checks pass: `ruff check`, `ruff format --check`,
+`pytest` all green."* A merge to `main` is now blocked unless all
+three commands exit 0.
+
 ---
 
 ## 📄 License

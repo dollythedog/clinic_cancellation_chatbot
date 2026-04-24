@@ -13,6 +13,121 @@ companion project-management folder at
 
 ## [Unreleased]
 
+### 2026-04-23 — Package hygiene — `app.infra` must not re-export submodule attributes under the same name as the submodule
+
+**Context:** Build Slice 2026-04-23-09 (WBS QA-05) removed two
+namespace-shadowing re-exports from `app/infra/__init__.py`. Before the
+slice, the package `__init__.py` contained:
+
+```python
+from app.infra.settings import settings
+from app.infra.twilio_client import twilio_client
+```
+
+Each of those imports an instance (a pydantic-settings `Settings` object
+and a `TwilioClient()` object respectively) into the `app.infra`
+package's namespace under a name that collides with a submodule
+(`app.infra.settings` the submodule, `app.infra.twilio_client` the
+submodule). Python's import system sets the submodule as an attribute on
+its parent package at import time, but a subsequent `from a.b.c import X`
+statement inside the package's `__init__.py` rebinds the attribute
+`a.b.c` (on `a.b`) to whatever `X` evaluates to. Downstream, the bytecode
+for `import a.b.c as Y` resolves the final segment via
+`getattr(a.b, 'c')` — which now returns the instance, not the module.
+Any caller that writes `Y.something` or `Y.ClassName` after that
+resolution fails with `AttributeError: '<instance type>' object has no
+attribute '<name>'`.
+
+This trap cost revise attempts in two consecutive slices:
+
+- **Slice 2026-04-23-07** (Twilio Signature Middleware) — cost 2 of 3
+  revise attempts diagnosing why `import app.infra.settings as
+  settings_module; settings = settings_module.settings` raised
+  `AttributeError`. Workaround: switch to `from app.infra.settings
+  import settings` which resolves through the submodule namespace.
+- **Slice 2026-04-23-08** (Streamlit Dashboard Auth) — cost ~1 revise
+  attempt when the same trap resurfaced in a new test fixture using the
+  same `import ... as X` idiom.
+
+**Decision:** The `app.infra` package **must not** re-export an attribute
+under a name that collides with any of its submodules. Specifically:
+
+1. `from app.infra.settings import settings` is **not** re-exported from
+   `app/infra/__init__.py`. Callers use `from app.infra.settings import
+   settings` directly.
+2. `from app.infra.twilio_client import twilio_client` is **not**
+   re-exported. Same rule.
+3. Other re-exports are fine *if* they don't collide with a submodule
+   name. The current `app/infra/__init__.py` continues to re-export
+   `Base`, `get_db_dependency`, `get_session`, `session_scope`, and the
+   model / enum classes — none of those names match a submodule
+   (submodules are `db` and `models`, not among the re-exported names).
+4. The regression test suite
+   (`tests/test_infra_package_imports.py`) asserts the rule at the
+   package level for the two previously-offending submodules. If a
+   future contributor re-introduces either re-export, the suite fails
+   with a pointer to this DECISIONS entry.
+
+**Rationale for applying this narrowly (to `app.infra` only) for now:**
+
+- The two slices that paid revise-attempt tax both hit `app.infra`. No
+  analogous cost has been observed elsewhere.
+- Sweeping the entire codebase for re-exports with potential shadow
+  collisions is a larger slice with larger blast radius (more callers
+  to audit, more chances of a surprise). Better to apply the rule where
+  it's paying for itself and extend as evidence accumulates.
+- The discipline is easy to re-apply to another package when the need
+  arises: drop the offending re-exports, update their `__all__`,
+  add a regression test.
+
+**Alternatives considered:**
+
+1. **Rename the `settings` submodule** (e.g., to `config.py`) so the
+   re-export name no longer collides. Rejected: larger blast radius
+   (every `from app.infra.settings import settings` caller becomes
+   `from app.infra.config import settings`, many files to touch), and
+   the naming `settings.py` / `settings = Settings()` is the
+   conventional pydantic-settings pattern. Removing the re-export is
+   less invasive than renaming the file.
+2. **Keep the re-exports, document the trap in `CLAUDE.md` /
+   `WARP.md`.** Rejected: the trap recurred across two slices even
+   though it was already documented in `ISSUES.md` as
+   `INFRA-NAMESPACE-SHADOWING`. Documentation alone doesn't remove the
+   footgun — the hole is still in the floor. A regression-test-locked
+   rule is a stronger fix.
+3. **Codebase-wide grep for similar patterns + fix all of them at
+   once.** Rejected for this slice: larger surface area, more chance
+   of surprise. If the same cost surfaces in `app.core/` or any other
+   package, a follow-on slice can extend this rule with the same
+   pattern.
+
+**Consequences:**
+
+- `app/infra/__init__.py` module docstring now names this rule
+  in a "Package-hygiene rule" paragraph and points at this DECISIONS
+  entry.
+- `tests/test_infra_package_imports.py` locks the invariant in for
+  both `app.infra.settings` and `app.infra.twilio_client`. Six test
+  cases across three `Test*` classes (module-resolution, `__all__`
+  absence, direct-import reachability).
+- Zero existing callers broken. Pre-execution grep confirmed no code
+  used the shadow-exploiting `from app.infra import settings` form;
+  all callers already use the namespace-explicit `from
+  app.infra.settings import settings` form, which is unaffected.
+- `INFRA-NAMESPACE-SHADOWING` in `ISSUES.md` moved to
+  `## ✅ Closed / Resolved Issues` with a full narrative including
+  the two-slice cost history.
+- Future re-exports from `app.infra` must pass the same rule.
+  Convention: if you need to re-export a singleton alongside its
+  submodule, either rename the inner symbol (`from .settings import
+  settings as app_settings`) or just don't re-export — callers can
+  reach it via the submodule.
+- **Cross-reference:** `Build-Packets.md` Packet 2026-04-23-09;
+  `CHANGELOG.md` `[Unreleased]` Slice 9 Fixed block; Design Schematic
+  §5.G Quality Automation row `QA-05 ✓`.
+
+---
+
 ### 2026-04-23 — Streamlit dashboard authentication — session-scoped login wrapper + localhost bind + SHA-256 salted hash
 
 **Context:** Build Slice 2026-04-23-08 (WBS APP-08) added authentication

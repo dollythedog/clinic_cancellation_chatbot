@@ -377,28 +377,9 @@ This is *by design* in Streamlit rather than a bug, but the failure mode (an `At
 
 ---
 
-### INFRA-NAMESPACE-SHADOWING (2026-04-23) — `app.infra/__init__.py` re-export shadows the `app.infra.settings` submodule attribute
+### INFRA-NAMESPACE-SHADOWING — see `## ✅ Closed / Resolved Issues` below
 
-**Finding:** During Build Slice 2026-04-23-07 (Packet 2026-04-23-07, WBS APP-03 / TST-02), the new middleware test fixture used the idiom `import app.infra.settings as settings_module; settings = settings_module.settings` to obtain the Settings singleton for test-time override. This raised `AttributeError: 'Settings' object has no attribute 'settings'` on every test's setup, consuming **2 of the 3 available revise attempts** before the real root cause was identified.
-
-**Root cause:** `app/infra/__init__.py` contains `from app.infra.settings import settings`, which imports the Settings **instance** into the `app.infra` package's namespace under the name `settings`. This rebinds the attribute `app.infra.settings` (on the `app.infra` package object) to point at the instance rather than the submodule. Python's `import app.infra.settings as X` bytecode resolves the final segment via `getattr(app.infra, 'settings')` — which after the `__init__.py` re-export returns the **instance**, not the module. `X.settings` then triggers pydantic's `__getattr__('settings')` on the instance, which has no field by that name, and raises `AttributeError`.
-
-**Impact:**
-
-- **Cost 2 of 3 revise attempts** in Slice 7. Attempt 1 misdiagnosed the error as a pytest-monkeypatch + pydantic-setattr incompatibility and replaced `monkeypatch.setattr` with `object.__setattr__` (did not help — the real failure was one line upstream, in argument evaluation). Attempt 2 correctly diagnosed the namespace shadow and switched the fixture to `from app.infra.settings import settings` which resolves the name through the submodule's own namespace rather than via the shadowed package attribute.
-- **Latent footgun for every future test** that wants to reach into `app.infra.settings` the module (as opposed to the Settings instance). Any test using `import app.infra.settings as X` will hit the same shadow. The recommended idiom `from app.infra.settings import settings` happens to sidestep it by accident — but a future contributor may try other forms and hit this.
-
-**Workaround (applies now):** Use `from app.infra.settings import settings` in tests and other consumers. Do not use `import app.infra.settings as X` followed by `X.settings`. If you really need the submodule object (rare), use `import sys; sys.modules["app.infra.settings"]` which bypasses the package-attribute path entirely.
-
-**Countermeasure options (for a future cleanup slice):**
-
-1. **Remove the re-export from `app/infra/__init__.py`.** Drop `from app.infra.settings import settings` and its entry in `__all__`. Downstream callers already import `from app.infra.settings import settings` directly; the re-export is a convenience that creates the shadow. Low-risk change, but touches every call site that used `from app.infra import settings` (if any exist — grep first).
-2. **Rename the submodule to avoid the collision.** E.g., `app/infra/config.py` with the Settings class, and keep `from app.infra.config import settings` in `__init__.py`. Higher-cost but eliminates the ambiguity at the source.
-3. **Document the trap in CLAUDE.md / WARP.md / test-writing guidelines.** Accept the shadow as a fact of life; just warn future contributors not to use the `import ... as X` form on `app.infra.settings`.
-
-**Owning slice / skill:** A dedicated `app/infra/` hygiene slice. Not blocking Iteration 1 exit — the workaround is trivial once known. Captured here so the trap is visible to the next person who writes a test importing `app.infra.settings`.
-
-**Priority:** 🟢 Low — workaround is trivial; no runtime risk; only costs time when a contributor first hits it.
+**Status:** Closed — resolved by **Packet 2026-04-23-09 (Slice 9, WBS QA-05)** on 2026-04-24. Full resolution narrative with two-slice cost history is in the Closed / Resolved section.
 
 ---
 
@@ -462,6 +443,28 @@ This is *by design* in Streamlit rather than a bug, but the failure mode (an `At
 ---
 
 ## ✅ Closed / Resolved Issues
+
+### INFRA-NAMESPACE-SHADOWING (2026-04-24) — `app/infra/__init__.py` re-exports shadowed the `settings` and `twilio_client` submodules
+
+**Status:** Closed — resolved by **Packet 2026-04-23-09 (Slice 9, WBS QA-05)** on 2026-04-24. Option 1 from the original triage applied: the two namespace-shadowing re-exports (`from app.infra.settings import settings`, `from app.infra.twilio_client import twilio_client`) removed from `app/infra/__init__.py` along with their `"settings"` / `"twilio_client"` entries in `__all__`. A module-level docstring addendum now names the rule ("packages must not re-export submodule attributes under the same name as the submodule") and points at the owning DECISIONS.md entry. A regression test module `tests/test_infra_package_imports.py` landed in the same slice with four checks locking the invariant in for both affected submodules; if a future contributor re-introduces either re-export, the test suite fails loudly with a pointer to the DECISIONS entry.
+
+**Two-slice cost history (retained for posterity):**
+
+- **Slice 7 (Packet 2026-04-23-07, APP-03 + TST-02, 2026-04-23):** cost **2 of 3 revise attempts**. The new middleware test fixture used `import app.infra.settings as settings_module; settings = settings_module.settings` to obtain the Settings singleton for test-time override. This raised `AttributeError: 'Settings' object has no attribute 'settings'` on every test's setup. Attempt 1 misdiagnosed the failure as a pytest-monkeypatch + pydantic-setattr incompatibility and switched to `object.__setattr__` (did not help — the real failure was one line upstream, in argument evaluation of `settings_module.settings`). Attempt 2 correctly diagnosed the namespace shadow and switched the fixture to `from app.infra.settings import settings` which resolves the name through the submodule's own namespace rather than via the shadowed package attribute. The shadow itself was documented as this ISSUES entry but left in place; the workaround sidestepped it without removing it.
+
+- **Slice 8 (Packet 2026-04-23-08, APP-08, 2026-04-23):** cost **~1 of 3 revise attempts**. The Streamlit dashboard auth test fixture used the same `import app.infra.settings as settings_module` idiom and hit the same trap. Fixed via the same in-fixture workaround. The recurrence made clear the trap was worth removing permanently rather than documenting-and-working-around indefinitely.
+
+**Original root cause (verbatim from the open entry):** `app/infra/__init__.py` contained `from app.infra.settings import settings`, which imports the Settings **instance** into the `app.infra` package's namespace under the name `settings`. This rebound the attribute `app.infra.settings` (on the `app.infra` package object) to point at the instance rather than the submodule. Python's `import app.infra.settings as X` bytecode resolves the final segment via `getattr(app.infra, 'settings')` — which after the `__init__.py` re-export returned the **instance**, not the module. `X.settings` then triggered pydantic's `__getattr__('settings')` on the instance, which has no field by that name, and raised `AttributeError`.
+
+**Discovery of the `twilio_client` parallel:** The pre-execution grep for Slice 9 surfaced that `app.infra.twilio_client` carried the exact same shadow pattern — the submodule is `twilio_client.py` and the re-export rebound the package's `twilio_client` attribute to the `TwilioClient()` instance. Any future `import app.infra.twilio_client as X` would have hit the same trap. Both re-exports were removed together for discipline symmetry.
+
+**Caller-audit confirmation (pre-execution grep):** Zero callers in the codebase used the shadow-exploiting form `from app.infra import settings` or `from app.infra import twilio_client`. The only `from app.infra import ...` hits in the tree were `from app.infra import logging_config` (in two test files, unrelated to this fix). Every other caller used the namespace-explicit form `from app.infra.settings import settings` / `from app.infra.twilio_client import ...`, which continues to work. The removal was therefore a pure deletion with no downstream caller updates required.
+
+**Resolution mechanism:** Remove the two shadowing re-exports + their `__all__` entries from `app/infra/__init__.py`. Add a docstring addendum naming the rule. Add the regression test suite. Document the rule in `DECISIONS.md` 2026-04-23 *"Package hygiene — `app.infra` must not re-export submodule attributes under the same name as the submodule"*.
+
+**Cross-reference:** `Build-Packets.md` Packet 2026-04-23-09; `CHANGELOG.md` `[Unreleased]` Slice 9 Fixed block; `DECISIONS.md` 2026-04-23 package-hygiene entry; Design Schematic §5.G Quality Automation row `QA-05 ✓`.
+
+---
 
 ### BUG-001 (2026-04-23) — `To` undefined in `app/api/sms_webhook.py` outbound-log branches
 

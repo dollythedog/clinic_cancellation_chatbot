@@ -9,6 +9,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+*Slice 2026-04-23-09 closed 2026-04-24 on Revise Attempt 0 (first clean-first-try close since Slice 6); all 16 Build Packet acceptance checks satisfied; WBS QA-05 added AND closed in the same slice on the Design Schematic (Draft + Final §5.G Quality Automation tables + §9 WBS Completion Log) per Path A — same precedent Slice 4 used for QA-04. Iteration 1 progress: 14 / 39 WBS items closed (Path A increments both numerator and denominator). Three outcomes: (1) `app/infra/__init__.py`'s two namespace-shadowing re-exports (`from app.infra.settings import settings`, `from app.infra.twilio_client import twilio_client`) are gone, along with their `__all__` entries and with a new module docstring "Package-hygiene rule" paragraph replacing them. `import app.infra.settings as X` and `import app.infra.twilio_client as X` now return module objects as naive static analysis would predict — ending the trap that cost revise attempts in Slices 7 (~2 of 3) and 8 (~1 of 3). (2) New regression test module `tests/test_infra_package_imports.py` (6 tests across 3 `Test*` classes) locks the invariant in; pytest suite grew from 41 → 47 tests, all green in 3.31 s. (3) `INFRA-NAMESPACE-SHADOWING` moved to `## ✅ Closed / Resolved Issues` with full two-slice cost narrative. New DECISIONS entry "Package hygiene — `app.infra` must not re-export submodule attributes under the same name as the submodule" documents the rule, the Python-bytecode rationale, and names the extension path if analogous cost surfaces elsewhere. Zero new ISSUES entries surfaced during execution or evaluate — pure cleanup slice with no unexpected discoveries. Scope stable throughout: exactly 5 codebase files + 1 project-management file, no scope creep.*
+
+### Fixed — Build slice 2026-04-23-09 (Package Hygiene: Remove Namespace-Shadowing Re-Exports, WBS QA-05)
+
+- `app/infra/__init__.py` — removed two namespace-shadowing re-exports
+  (`from app.infra.settings import settings`,
+  `from app.infra.twilio_client import twilio_client`) and their
+  matching `"settings"` / `"twilio_client"` entries in `__all__`.
+  These re-exports rebound the `app.infra.settings` and
+  `app.infra.twilio_client` attributes on the `app.infra` package
+  object to the instances the submodules export, shadowing the
+  submodules themselves. The shadows broke the `import app.infra.settings
+  as X` idiom — Python's bytecode resolves the final segment via
+  `getattr(app.infra, 'settings')`, which returned the instance not
+  the module — and cost revise attempts in Slices 2026-04-23-07 (~2
+  of 3) and 2026-04-23-08 (~1 of 3) before the removal was prioritized.
+- `app/infra/__init__.py` — module docstring extended with a
+  "Package-hygiene rule" paragraph naming the no-shadow-re-export
+  invariant, directing callers to use the namespace-explicit form
+  (`from app.infra.settings import settings`), and pointing at the
+  `DECISIONS.md` 2026-04-23 package-hygiene entry for the full
+  rationale.
+- `tests/test_infra_package_imports.py` — **new.** Regression test
+  suite with six test cases across three `Test*` classes:
+  (1) both `app.infra.settings` and `app.infra.twilio_client` resolve
+  to module objects (not instances); (2) `"settings"` and
+  `"twilio_client"` are absent from `app.infra.__all__`; (3) the
+  canonical `from app.infra.settings import settings` and
+  `from app.infra.twilio_client import twilio_client` direct-import
+  paths still work (confirms the deletion did not break anything that
+  was using the submodule directly). If a future contributor
+  re-introduces either re-export, the suite fails loudly with a
+  pointer to the DECISIONS entry.
+- `ISSUES.md` — `INFRA-NAMESPACE-SHADOWING` moved to
+  `## ✅ Closed / Resolved Issues` with a full resolution narrative
+  including the two-slice cost history, the pre-execution zero-caller
+  grep audit, and the `twilio_client` parallel that the grep surfaced.
+- `DECISIONS.md` — new 2026-04-23 entry *"Package hygiene —
+  `app.infra` must not re-export submodule attributes under the same
+  name as the submodule"* documenting the rule, the Python-bytecode
+  rationale (`import a.b.c as X` resolves via `getattr(a.b, 'c')`),
+  the scoping decision (apply narrowly to `app.infra` for now; do not
+  sweep the rest of the codebase in this slice), and the
+  test-locked invariant.
+- Design Schematic §5.G Quality Automation — new row `QA-05 ✓`
+  added in both Draft and Final WBS tables (Path A per the Slice-4
+  precedent: new WBS item added AND closed in the same slice).
+
+**Caller-audit confirmation.** The pre-execution grep for the
+shadow-exploiting form (`from app.infra import settings` /
+`from app.infra import twilio_client`) returned zero hits across
+the entire codebase. Removing the re-exports therefore required
+zero caller updates. Every existing caller uses the namespace-explicit
+form (`from app.infra.settings import settings` /
+`from app.infra.twilio_client import ...`) which continues to work.
+
+**Caller classes not affected.** The other re-exports in
+`app/infra/__init__.py` — `Base`, `get_db_dependency`, `get_session`,
+`session_scope`, and the model / enum classes (`CancellationEvent`,
+`CancellationStatus`, `MessageDirection`, `MessageLog`,
+`MessageStatus`, `Offer`, `OfferState`, `PatientContact`,
+`ProviderReference`, `StaffUser`, `WaitlistEntry`) — are untouched.
+None of those names collide with a submodule (the submodules are
+`db` and `models`, not among the re-exported names), so they don't
+trigger the shadow pathology and keep the package's export
+convenience intact.
+
+**Scope discipline.** No changes to any `app/*` file other than
+`app/infra/__init__.py`; no changes to `dashboard/*`, `scripts/*`,
+`requirements.txt`, `pyproject.toml`, `.github/workflows/*`,
+`.gitattributes`, `.env.example`, or `README.md`; no changes to any
+existing test file. Five codebase files touched (1 source modified +
+1 new test + 3 docs); Design Schematic edit is captured on the
+project-management side (workspace repo), separate from the codebase
+commit.
+
 *Slice 2026-04-23-08 closed 2026-04-23 on Revise Attempt 3 (the maximum permitted by the build-orchestrator's three-attempt guardrail); all 16 Build Packet acceptance checks satisfied; WBS APP-08 marked Done on the Design Schematic (Draft + Final §5.C Core Application Hardening tables and §9 WBS Completion Log). Iteration 1 progress: 13 / 38 WBS items closed. Three outcomes: (1) `TwilioSignatureMiddleware`'s companion — `TwilioSignatureMiddleware` gated external seam 1 in Slice 7; `dashboard/auth.py`'s `require_auth()` wrapper now gates external seam 2 in this slice, completing the Validation Boundaries guardrail lens's two-seam discipline. The in-repo half of the §6 Iteration-1 exit criterion "Streamlit auth boundary in place (HTTP basic-auth wrapper) and documented in DECISIONS.md" is satisfied; Risk R4 (Streamlit dashboard PHI exposed on LAN) is mitigated at the application-code layer. (2) Three new required Settings fields (`DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD_HASH`, `DASHBOARD_PASSWORD_SALT`) plus one default change (`STREAMLIT_SERVER_ADDRESS` "0.0.0.0" → "127.0.0.1") now enforce loud-failure-at-startup for missing credentials and default to loopback bind. (3) Three revise cycles consumed the full 3-of-3 budget: Attempt 1 fixed UP037 + I001 ruff findings but misdiagnosed five pytest setup errors (they were the Slice-7 `INFRA-NAMESPACE-SHADOWING` trap resurfacing, compounded by a mistaken blank-line insertion); Attempt 2 corrected the root cause and the em-dash encoding bug (`AppTest.from_function` + cp1252 temp-file write vs Streamlit UTF-8 reader); Attempt 3 fixed two more AppTest-specific traps (session_state has no `.get()`, module constants aren't in harness scope) plus one ruff-format cosmetic nit applied via auto-fix. Scope extended pre-execution from 8 → 10 files via Option-1 justified exception (`tests/conftest.py` + `tests/test_settings.py`), required because the three new non-defaulted Settings fields need matching placeholder seeds in the test environment — the same precedent set when TWILIO_* was added. Two new ISSUES entries surfaced for cross-slice follow-up: `STREAMLIT-APPTEST-ASCII-ONLY-HARNESS` 🟡 Medium (upstream Streamlit cp1252/UTF-8 bug) and `STREAMLIT-APPTEST-SESSIONSTATE-NO-GET` 🟢 Low (AppTest idiom gotcha). The Slice-7 `INFRA-NAMESPACE-SHADOWING` entry resurfaced as a latent cost and continues to point at the `app/infra/__init__.py` re-export removal as the permanent countermeasure.*
 
 ### Added — Build slice 2026-04-23-08 (Streamlit Dashboard Authentication, WBS APP-08)

@@ -32,6 +32,9 @@ REQUIRED_KEYS: frozenset[str] = frozenset(
         "TWILIO_ACCOUNT_SID",
         "TWILIO_AUTH_TOKEN",
         "TWILIO_PHONE_NUMBER",
+        "DASHBOARD_USERNAME",
+        "DASHBOARD_PASSWORD_HASH",
+        "DASHBOARD_PASSWORD_SALT",
     }
 )
 
@@ -48,6 +51,11 @@ def _set_all_required_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TWILIO_ACCOUNT_SID", "ACtest")
     monkeypatch.setenv("TWILIO_AUTH_TOKEN", "test_token")
     monkeypatch.setenv("TWILIO_PHONE_NUMBER", "+15555550100")
+    monkeypatch.setenv("DASHBOARD_USERNAME", "testadmin")
+    # 64-char SHA-256-shape hex placeholder; the auth test suite in
+    # tests/test_dashboard_auth.py covers real hash / verify correctness.
+    monkeypatch.setenv("DASHBOARD_PASSWORD_HASH", "deadbeef" * 8)
+    monkeypatch.setenv("DASHBOARD_PASSWORD_SALT", "deadbeef" * 4)
 
 
 def test_required_fields_are_non_defaulted() -> None:

@@ -94,8 +94,55 @@ class Settings(BaseSettings):
     # STREAMLIT
     # ========================================================================
     STREAMLIT_SERVER_PORT: int = Field(8501, description="Streamlit port")
-    STREAMLIT_SERVER_ADDRESS: str = Field("0.0.0.0", description="Streamlit host")
+    STREAMLIT_SERVER_ADDRESS: str = Field(
+        "127.0.0.1",
+        description=(
+            "Streamlit host bind address. Defaults to loopback so the dashboard is "
+            "unreachable from the clinic LAN; the HTTP basic-auth-style login "
+            "wrapper in dashboard/auth.py adds a second layer of defense for "
+            "on-host access. Set to 0.0.0.0 only when you have verified an "
+            "upstream reverse proxy is filtering inbound traffic."
+        ),
+    )
     STREAMLIT_SERVER_HEADLESS: bool = Field(True, description="Streamlit headless mode")
+
+    # ========================================================================
+    # DASHBOARD AUTHENTICATION
+    # ========================================================================
+    # Three required fields. Missing values cause startup to fail loudly via
+    # pydantic's ValidationError — the same discipline APP-01 established for
+    # every required secret. Generation procedure (run once per install, then
+    # copy the output into `.env`) is documented in DECISIONS.md under the
+    # 2026-04-23 entry "Streamlit dashboard authentication". The short form:
+    #
+    #     python -c "import secrets, hashlib, getpass; \
+    #       salt = secrets.token_hex(16); \
+    #       pw = getpass.getpass('Password: '); \
+    #       print(f'DASHBOARD_PASSWORD_SALT={salt}'); \
+    #       print(f'DASHBOARD_PASSWORD_HASH={hashlib.sha256((salt + pw).encode(\"utf-8\")).hexdigest()}')"
+    #
+    # The stored hash is SHA-256 of ``salt || plaintext``; verification uses
+    # ``hmac.compare_digest`` for constant-time comparison. Plaintext passwords
+    # are never logged, never committed, and never stored outside ``.env``.
+    DASHBOARD_USERNAME: str = Field(
+        ..., description="Admin username for the Streamlit dashboard login wrapper"
+    )
+    DASHBOARD_PASSWORD_HASH: str = Field(
+        ...,
+        description=(
+            "SHA-256 hex digest of salt || plaintext. See DECISIONS.md "
+            "2026-04-23 'Streamlit dashboard authentication' for the "
+            "generation + rotation procedure."
+        ),
+    )
+    DASHBOARD_PASSWORD_SALT: str = Field(
+        ...,
+        description=(
+            "Hex-encoded per-install salt (32 chars minimum, e.g. "
+            "``secrets.token_hex(16)``). Rotate together with the hash; "
+            "never reuse a salt across installs."
+        ),
+    )
 
     # ========================================================================
     # DATA RETENTION

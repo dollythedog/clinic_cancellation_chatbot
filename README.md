@@ -242,6 +242,46 @@ validator = RequestValidator(settings.TWILIO_AUTH_TOKEN)
 signature = validator.compute_signature(url, params)
 ```
 
+### Dashboard authentication
+
+The Streamlit dashboard gates access behind a single-admin username +
+password check implemented in
+[`dashboard/auth.py`](dashboard/auth.py). Every session must sign in
+before any dashboard content renders. Three invariants hold:
+
+* **Localhost bind.** `STREAMLIT_SERVER_ADDRESS` defaults to
+  `127.0.0.1` — the Streamlit server is unreachable from the clinic
+  LAN. The only ingress is operators sitting at the Windows server's
+  console (or RDC'd in with existing Windows creds). Override to
+  `0.0.0.0` only behind a reverse proxy that's filtering inbound
+  traffic.
+* **Session-scoped login.** The login form wrapper, rendered as the
+  first content on every request, blocks the dashboard until the
+  operator supplies valid credentials. Auth persists for the current
+  browser session; closing the tab or restarting the NSSM service
+  ends the session and requires a fresh login. No persistent cookies,
+  no remember-me, no expiry timer.
+* **SHA-256 salted hash, constant-time comparison.** Credentials live
+  in `.env` as `DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD_HASH`, and
+  `DASHBOARD_PASSWORD_SALT`. The hash is SHA-256 of `salt || plaintext`
+  and comparison uses `hmac.compare_digest` to defeat timing-attack
+  observers. Plaintext passwords are never logged, never committed,
+  never stored outside `.env`. The interpretation of "HTTP basic-auth
+  wrapper" (session-scoped in-app login vs. literal WWW-Authenticate
+  401 basic-auth) plus the credential-rotation procedure — generating
+  a fresh salt + hash pair and restarting the NSSM Streamlit service —
+  are documented in [`DECISIONS.md`](DECISIONS.md) 2026-04-23
+  *"Streamlit dashboard authentication — session-scoped login wrapper
+  + localhost bind + SHA-256 salted hash"*.
+
+Why not a reverse proxy or a full auth library? COA 1 (Minimal
+Hardening / Single-Service Monolith) explicitly rules out reverse
+proxies, and the single-admin threat model does not warrant
+`bcrypt` / `argon2` / `streamlit-authenticator` — the Solo-Maintainer
+Fit guardrail lens prices every extra dependency. If the threat model
+grows (multi-user access, LAN-external exposure), the upgrade path is
+named at the bottom of the same `DECISIONS.md` entry.
+
 ---
 
 ## 📊 Database Schema

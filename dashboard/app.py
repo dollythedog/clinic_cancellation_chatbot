@@ -49,6 +49,15 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Authentication gate (APP-08, Slice 2026-04-23-08). Runs after
+# st.set_page_config() and before any other Streamlit rendering so no
+# dashboard content leaks to an unauthenticated session. See
+# dashboard/auth.py for the implementation and DECISIONS.md 2026-04-23
+# "Streamlit dashboard authentication" for the rotation procedure.
+from dashboard.auth import require_auth  # noqa: E402 — gate must sit after set_page_config
+
+require_auth()
+
 # Custom CSS
 st.markdown(
     """

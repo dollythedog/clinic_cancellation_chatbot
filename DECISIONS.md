@@ -13,6 +13,155 @@ companion project-management folder at
 
 ## [Unreleased]
 
+### 2026-04-23 — Streamlit dashboard authentication — session-scoped login wrapper + localhost bind + SHA-256 salted hash
+
+**Context:** Build Slice 2026-04-23-08 (WBS APP-08) added authentication
+to the Streamlit dashboard. The Design Schematic §5.C WBS phrases the
+deliverable as *"Streamlit auth — HTTP basic-auth wrapper. Bind Streamlit
+to localhost; implement HTTP basic-auth wrapper; document credential
+rotation procedure."* Risk R4 in the register names this slice as the
+sole mitigation for *"Streamlit dashboard PHI exposed on LAN."*
+
+Literal browser-native HTTP basic-auth (a WWW-Authenticate: Basic 401
+challenge) is not achievable inside a Streamlit-only deployment:
+Streamlit runs its own Tornado server and does not expose middleware
+hooks for protocol-level auth challenges. The conventional way to add
+real HTTP basic-auth on top of Streamlit is a reverse proxy (nginx,
+caddy, traefik) with `auth_basic` or equivalent. COA 1 (Minimal
+Hardening / Single-Service Monolith) explicitly rules out reverse
+proxies on the grounds that the added operational surface (another
+service, another NSSM entry, another TLS terminator, another config
+file) is disproportionate to the single-admin LAN-internal threat
+model this deployment faces.
+
+Two alternatives were considered:
+
+1. **Reverse proxy (nginx with `auth_basic`) + real HTTP basic-auth.**
+   Rejected: direct contradiction of COA 1; adds a third NSSM service;
+   adds the operational surface the Define §7 maintainability dealbreaker
+   exists to prevent.
+2. **Add `streamlit-authenticator` (or equivalent) community library.**
+   Rejected: the library ships its own cookie/session/yaml-config model,
+   adds a pip dependency whose Windows-installer support is historically
+   shaky, and solves a multi-user problem this project does not have
+   (single admin). The Solo-Maintainer Fit guardrail lens prices every
+   dep; the cost here is larger than the value.
+
+**Decision:** Implement a session-scoped login wrapper inside the
+Streamlit app itself, not literal HTTP basic-auth. Specifically:
+
+- A new module `dashboard/auth.py` with three public callables:
+  `hash_password(plaintext, salt)`, `verify_password(plaintext, salt,
+  expected_hash)`, and `require_auth()`. The hash is SHA-256 of
+  `salt || plaintext`. The verifier uses `hmac.compare_digest` for
+  constant-time comparison to defeat timing-attack observers.
+- `require_auth()` inspects `st.session_state["dashboard_authenticated"]`;
+  if truthy, returns immediately. Otherwise it renders a login form
+  (username + password + submit button) and calls `st.stop()` at the
+  end so no downstream content renders pre-auth. On valid submit, it
+  sets the session flag and calls `st.rerun()`. On invalid submit, it
+  shows a generic `"Invalid credentials"` error — does not reveal which
+  half (username or password) was wrong, to resist username enumeration.
+- Credentials live in three required `Settings` fields:
+  `DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD_HASH`,
+  `DASHBOARD_PASSWORD_SALT`. All three are `Field(..., ...)` non-defaulted —
+  the same discipline every other required secret observes. Missing values
+  cause the app to refuse startup via `pydantic.ValidationError` with a
+  human-readable error message naming the missing keys and pointing at
+  `.env.example`.
+- The Streamlit server default bind address changed from `"0.0.0.0"`
+  to `"127.0.0.1"` in `settings.py` and `.env.example`. This is the
+  first layer of defense: the dashboard is simply not reachable from
+  the clinic LAN. The login wrapper is the second layer. Operators
+  who RDC into the server or sit at its console still have to sign in.
+- Session semantics: per-browser-tab; closing the tab or restarting
+  the `CancellationChatbotDashboard` NSSM service ends the session and
+  requires a fresh login. No persistent cookies, no remember-me, no
+  expiry timer. Simplicity over feature creep; matches the single-admin
+  threat model.
+
+**SHA-256 vs. bcrypt/argon2.** SHA-256 is fit-for-purpose here
+because (a) the threat model is a clinic-LAN insider who may have
+watched over someone's shoulder, not a leaked-password-database-crack
+scenario; (b) the credential is single-admin and rotates quarterly per
+the procedure below, not a user-database; (c) the per-install salt
+means even if the hash leaks, it cannot be rainbow-tabled; (d) comparison
+is constant-time via `hmac.compare_digest`. If the threat model ever
+grows to password-database breach scenarios, upgrading to `bcrypt` or
+`argon2-cffi` is a future slice — and would likely coincide with
+growing to multi-user, which also justifies the extra dep.
+
+**Credential generation + rotation procedure:**
+
+1. **Generate a fresh salt + hash pair.** Run the following one-liner
+   on any machine with Python 3.9+. It prompts for the password (never
+   echoed to the terminal), generates a random 32-hex-char salt via
+   `secrets.token_hex(16)`, computes SHA-256 of `salt || password`, and
+   prints both values in `.env`-ready form:
+
+   ```bash
+   python -c "
+   import secrets, hashlib, getpass
+   salt = secrets.token_hex(16)
+   pw = getpass.getpass('New dashboard password: ')
+   h = hashlib.sha256((salt + pw).encode('utf-8')).hexdigest()
+   print(f'DASHBOARD_PASSWORD_SALT={salt}')
+   print(f'DASHBOARD_PASSWORD_HASH={h}')
+   "
+   ```
+
+2. **Update `.env` on the Windows server.** Replace the
+   `DASHBOARD_PASSWORD_SALT=` and `DASHBOARD_PASSWORD_HASH=` lines with
+   the two printed values. The `DASHBOARD_USERNAME` line stays as-is
+   (rotate the username only when the admin-of-record changes).
+
+3. **Restart the NSSM Streamlit service** so the new Settings values
+   are loaded:
+
+   ```powershell
+   nssm restart CancellationChatbotDashboard
+   ```
+
+4. **Verify** by attempting to log in with the new password from the
+   server console. The first session after rotation should require a
+   fresh sign-in because the restart clears in-memory `session_state`.
+
+5. **Rotation cadence.** Rotate every 90 days or on any suspected
+   compromise (someone watched the admin type the password, the `.env`
+   file was accidentally shared, staff-of-record changed). Record each
+   rotation event in the project's operational log or the RUNBOOK's
+   credential-rotation section once DOC-03 lands.
+
+**Consequences:**
+
+- **Risk R4 mitigated.** The sole named mitigation landed. The Iteration-1
+  exit criterion *"Streamlit auth boundary in place (HTTP basic-auth
+  wrapper) and documented in DECISIONS.md"* is satisfied at the in-repo
+  layer.
+- **Three new required Settings fields** enforce loud-failure-at-startup
+  for missing credentials — the same Secrets & Config discipline every
+  other secret observes.
+- **`.env.example` gains three new keys** with the rotation-procedure
+  pointer. Existing tests (`test_env_example_parity_with_settings_class`)
+  enforce the Settings-to-`.env.example` parity automatically.
+- **Tests land together with code.** `tests/test_dashboard_auth.py`
+  carries 9 tests covering hash purity, verify correctness, constant-time
+  comparison, and `require_auth` gate semantics via
+  `streamlit.testing.v1.AppTest`.
+- **Upgrade triggers named.** If the threat model grows — multi-user
+  dashboard, LAN-external exposure, password-database breach concerns —
+  the slice-level upgrade is (a) introduce a reverse proxy for real
+  HTTP basic-auth, (b) swap to `bcrypt` or `argon2-cffi`, (c) adopt a
+  community auth library like `streamlit-authenticator`. Each trigger
+  is a named future-slice candidate, not a silent "someday."
+- **Cross-reference:** `Build-Packets.md` Packet 2026-04-23-08 carries
+  the scope, boundaries, and acceptance checks. `CHANGELOG.md`
+  `[Unreleased]` Slice 8 Added block enumerates every file change.
+  `README.md` `## 🔐 Security & Compliance` gains the user-facing
+  "Dashboard authentication" subsection.
+
+---
+
 ### 2026-04-23 — Twilio signature middleware URL strategy — `TWILIO_WEBHOOK_BASE_URL` as canonical signing URL, `request.url` as warn-logged fallback
 
 **Context:** Build Slice 2026-04-23-07 (WBS APP-03) added

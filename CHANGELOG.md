@@ -9,6 +9,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+*Slice 2026-04-23-08 closed 2026-04-23 on Revise Attempt 3 (the maximum permitted by the build-orchestrator's three-attempt guardrail); all 16 Build Packet acceptance checks satisfied; WBS APP-08 marked Done on the Design Schematic (Draft + Final §5.C Core Application Hardening tables and §9 WBS Completion Log). Iteration 1 progress: 13 / 38 WBS items closed. Three outcomes: (1) `TwilioSignatureMiddleware`'s companion — `TwilioSignatureMiddleware` gated external seam 1 in Slice 7; `dashboard/auth.py`'s `require_auth()` wrapper now gates external seam 2 in this slice, completing the Validation Boundaries guardrail lens's two-seam discipline. The in-repo half of the §6 Iteration-1 exit criterion "Streamlit auth boundary in place (HTTP basic-auth wrapper) and documented in DECISIONS.md" is satisfied; Risk R4 (Streamlit dashboard PHI exposed on LAN) is mitigated at the application-code layer. (2) Three new required Settings fields (`DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD_HASH`, `DASHBOARD_PASSWORD_SALT`) plus one default change (`STREAMLIT_SERVER_ADDRESS` "0.0.0.0" → "127.0.0.1") now enforce loud-failure-at-startup for missing credentials and default to loopback bind. (3) Three revise cycles consumed the full 3-of-3 budget: Attempt 1 fixed UP037 + I001 ruff findings but misdiagnosed five pytest setup errors (they were the Slice-7 `INFRA-NAMESPACE-SHADOWING` trap resurfacing, compounded by a mistaken blank-line insertion); Attempt 2 corrected the root cause and the em-dash encoding bug (`AppTest.from_function` + cp1252 temp-file write vs Streamlit UTF-8 reader); Attempt 3 fixed two more AppTest-specific traps (session_state has no `.get()`, module constants aren't in harness scope) plus one ruff-format cosmetic nit applied via auto-fix. Scope extended pre-execution from 8 → 10 files via Option-1 justified exception (`tests/conftest.py` + `tests/test_settings.py`), required because the three new non-defaulted Settings fields need matching placeholder seeds in the test environment — the same precedent set when TWILIO_* was added. Two new ISSUES entries surfaced for cross-slice follow-up: `STREAMLIT-APPTEST-ASCII-ONLY-HARNESS` 🟡 Medium (upstream Streamlit cp1252/UTF-8 bug) and `STREAMLIT-APPTEST-SESSIONSTATE-NO-GET` 🟢 Low (AppTest idiom gotcha). The Slice-7 `INFRA-NAMESPACE-SHADOWING` entry resurfaced as a latent cost and continues to point at the `app/infra/__init__.py` re-export removal as the permanent countermeasure.*
+
+### Added — Build slice 2026-04-23-08 (Streamlit Dashboard Authentication, WBS APP-08)
+
+- `dashboard/auth.py` — **created.** Session-scoped login wrapper for
+  the Streamlit dashboard. Three public callables:
+  `hash_password(plaintext, salt) -> str` (SHA-256 hex of
+  `salt || plaintext`); `verify_password(plaintext, salt, expected_hash)
+  -> bool` (constant-time compare via `hmac.compare_digest`);
+  `require_auth() -> None` (reads credentials from
+  `app.infra.settings.settings`, renders a login form if
+  `st.session_state["dashboard_authenticated"]` is not set, calls
+  `st.stop()` after the form so no downstream content renders pre-auth,
+  sets the session flag + `st.rerun()` on valid credentials, shows a
+  generic "Invalid credentials" error on failure without revealing
+  which half was wrong).
+- `dashboard/app.py` — single `require_auth()` call added after
+  `st.set_page_config(...)` and before any other Streamlit rendering.
+  No other logic changes in this file.
+- `app/infra/settings.py` — three new required fields:
+  `DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD_HASH`,
+  `DASHBOARD_PASSWORD_SALT` (all `Field(...)` with no defaults — the
+  same discipline APP-01 established for every required secret).
+  `STREAMLIT_SERVER_ADDRESS` default changed from `"0.0.0.0"` to
+  `"127.0.0.1"` — safer-by-default loopback bind; deployments that
+  explicitly set the env value are unaffected.
+- `.env.example` — new `DASHBOARD AUTHENTICATION` section with three
+  empty keys + operator-facing comment referencing DECISIONS.md for
+  the generation + rotation procedure. Existing `STREAMLIT_SERVER_ADDRESS`
+  line updated to reflect the new `127.0.0.1` default.
+- `tests/test_dashboard_auth.py` — **created.** 9 test cases: 5
+  covering `hash_password` / `verify_password` purity (deterministic,
+  salt-sensitive, correct/wrong password, wrong salt) + 1 verifying
+  `hmac.compare_digest` is the comparator (monkeypatched observer) +
+  3 `streamlit.testing.v1.AppTest` tests covering
+  `require_auth` gate semantics (blocks without session, accepts
+  valid credentials, rejects invalid credentials without disclosing
+  which half was wrong).
+- `tests/conftest.py` — extended the module-level
+  `os.environ.setdefault` block with three new placeholders
+  (`DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD_SALT`,
+  `DASHBOARD_PASSWORD_HASH`) so `Settings()` construction at test
+  collection time has non-empty values for every required field. The
+  placeholder hash is computed inline via `hashlib.sha256` against the
+  canonical test plaintext `"testpassword"`, which the auth-test suite
+  re-uses for its AppTest-based correctness checks. This is a
+  justified scope extension beyond the original packet's 8-file list
+  — the "baseline test infrastructure grows when required-fields
+  roster grows" precedent set by the TWILIO_* / DATABASE_URL case.
+- `tests/test_settings.py` — `REQUIRED_KEYS` frozenset and the
+  `_set_all_required_env` helper extended to include the three new
+  dashboard-auth fields, mirroring the Settings class shape. Existing
+  tests (`test_required_fields_are_non_defaulted`,
+  `test_missing_required_env_raises_validation_error`,
+  `test_settings_loads_when_required_env_present`,
+  `test_env_example_parity_with_settings_class`) now cover the new
+  fields automatically via these helpers — no new test functions,
+  just rostering. Same justified scope extension as `conftest.py`.
+- `DECISIONS.md` — new 2026-04-23 entry titled *"Streamlit dashboard
+  authentication — session-scoped login wrapper + localhost bind +
+  SHA-256 salted hash"* documenting the "HTTP basic-auth wrapper"
+  interpretation, the SHA-256 vs. bcrypt/argon2 rationale, the
+  single-admin scope decision, the step-by-step credential-rotation
+  procedure (with a `python -c` one-liner), and the named upgrade
+  triggers (multi-user → auth library; LAN-external exposure →
+  reverse proxy + real basic-auth).
+- `README.md` — new "Dashboard authentication" subsection under
+  `## 🔐 Security & Compliance`, mirroring the Slice-7
+  "Webhook authentication" subsection's shape. Documents the
+  localhost bind, session-scoped login, SHA-256 salted-hash discipline,
+  and points at DECISIONS.md for the rotation procedure.
+
+**Scope and deployment gating.** This slice delivers the in-repo
+half of the Iteration-1 exit criterion *"Streamlit auth boundary in
+place (HTTP basic-auth wrapper) and documented in DECISIONS.md"* plus
+closes Risk R4 (*"Streamlit dashboard PHI exposed on LAN"*) at the
+application-code layer. Operator-side credential provisioning
+(generating `.env` values on the Windows server, restarting the NSSM
+Streamlit service) is covered in the DECISIONS.md rotation procedure
+and will be named in DOC-03 (RUNBOOK) when that slice lands.
+
+No application-logic changes outside `dashboard/app.py`
+(single new import + `require_auth()` call) and `app/infra/settings.py`
+(field additions + one default change). No changes to `app/api/*`,
+`app/core/*`, `requirements.txt`, `pyproject.toml`, or either of the
+Slice-5 / Slice-6 GitHub Actions workflows. No new pip packages —
+`hashlib`, `hmac`, and `secrets` are stdlib.
+
 *Slice 2026-04-23-07 closed 2026-04-23 on Revise Attempt 2; all 21 Build Packet acceptance checks satisfied; WBS APP-03 and TST-02 marked Done on the Design Schematic (Draft + Final §5.C Core Application Hardening / §5.F Testing tables and §9 WBS Completion Log). Iteration 1 progress: 12 / 38 WBS items closed. Three outcomes: (1) `TwilioSignatureMiddleware` is live, rejecting unsigned / invalidly-signed POSTs to `/sms/*` and `/twilio/*` with HTTP 403 before any route handler runs — the Validation Boundaries guardrail lens external seam 1 is now enforced. (2) BUG-001 (`NameError: To` on every STOP / HELP / NO reply outbound-log path) fixed at source; the `"app/api/sms_webhook.py" = ["F821"]` grandfather entry removed from `pyproject.toml` per the Slice-5 owning-slice-removable invariant (grandfather count 9 → 6). (3) The in-repo half of the §6 Iteration-1 exit criterion "Twilio signature verification confirmed end-to-end" is satisfied; the end-to-end tail remains OPS-02 / BAA-gated. Revise cycles consumed 2 of 3 attempts: Attempt 1 misdiagnosed the 5 middleware-fixture errors as pytest-monkeypatch + pydantic-setattr incompatibility; Attempt 2 identified the real root cause as namespace shadowing in `app/infra/__init__.py` (which re-exports `settings` and thereby rebinds the `app.infra.settings` package attribute to the Settings instance, breaking `import app.infra.settings as X` bytecode in downstream tests) and fixed it by switching the fixture to `from app.infra.settings import settings`. Two new ISSUES entries surfaced for cross-slice follow-up: `INFRA-NAMESPACE-SHADOWING` (workaround-known, low priority) and `NULL-BYTE-SCRUB-AUTOMATION` (related to `BUILD-CLOSEOUT-COMMIT-GATE`).*
 
 ### Added — Build slice 2026-04-23-07 (Twilio Signature Middleware + BUG-001 Fix, WBS APP-03 / TST-02 + BUG-001)

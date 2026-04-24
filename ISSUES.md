@@ -311,6 +311,72 @@ Ownership disposition for the newly-surfaced items:
 
 ## 🔧 Build-System & Skill-Level Follow-Ups
 
+### STREAMLIT-APPTEST-ASCII-ONLY-HARNESS (2026-04-23) — `AppTest.from_function` on Windows writes cp1252 but Streamlit reads UTF-8
+
+**Finding:** `streamlit.testing.v1.AppTest.from_function(fn)` on Windows writes the harness function's source (via `inspect.getsource(fn)`) to a temp file using `open(path, "w")` without an explicit encoding. On Windows the default falls back to `locale.getpreferredencoding()` (cp1252 on US English Windows), which encodes characters like em-dash (`—`) as single bytes (0x97 for em-dash). Streamlit's script cache later reads the same temp file via `open(path, "r", encoding="utf-8")` and crashes with `UnicodeDecodeError: 'utf-8' codec can't decode byte 0x97 in position N: invalid start byte`.
+
+**Discovery:** Build Slice 2026-04-23-08 (Packet 2026-04-23-08, WBS APP-08) Revise Attempt 1. The harness function `_auth_harness` in `tests/test_dashboard_auth.py` carried an em-dash in its docstring. Every AppTest-based test (three of them) failed at `at.run()` with the UnicodeDecodeError before any assertion could run.
+
+**Cost:** 1 of the 3 revise attempts in Slice 8.
+
+**Workaround (applies now):** Any function intended to be passed to `AppTest.from_function` must be **ASCII-only** in its body (including docstrings and inline comments). The discipline is two-part:
+
+1. No non-ASCII characters (em-dashes, en-dashes, typographic quotes, unicode bullets / arrows, non-breaking spaces, etc.) anywhere in the harness function source.
+2. No references to module-level names (constants, imports, variables). `AppTest.from_function` extracts only the function body and runs it as a standalone script; the surrounding module's globals are not in scope. See `STREAMLIT-APPTEST-HARNESS-SCOPE` for the sibling trap.
+
+The `_auth_harness` docstring in `tests/test_dashboard_auth.py` documents both constraints inline so future maintainers don't re-introduce either.
+
+**Root cause:** Upstream Streamlit bug. `AppTest.from_function`'s temp-file write should be explicit `encoding="utf-8"` to match the reader. Reproducible on any Windows machine running Python 3.11 + Streamlit 1.51.0.
+
+**Countermeasure options:**
+
+1. **File a Streamlit issue upstream.** Root-cause fix. Not blocking anything locally, but worth doing when there is time to spare.
+2. **Lint rule.** Add a pre-commit or ruff custom rule that flags non-ASCII bytes inside any function passed to `AppTest.from_function`. Signal-to-noise is low (one slice surfaced this in 38 slices of history) and the workaround is documented, so probably not worth the custom-rule infrastructure.
+3. **Test-writing guidance in `CLAUDE.md` / `WARP.md` / test-writing README.** Two-sentence note: "AppTest.from_function harness functions must be ASCII-only and must not reference module-level names. See `tests/test_dashboard_auth.py::_auth_harness` for a worked example." Lowest-effort, highest-leverage preventive.
+
+**Owning slice / skill:** A small docs-only slice, or a passing comment in the next applicable AppTest-using slice. Not blocking Iteration 1 exit.
+
+**Priority:** 🟡 Medium — the workaround is trivial once known, but the failure mode is confusing on first encounter (the UnicodeDecodeError points at a temp-file path the developer never wrote, which makes the trail cold). Documentation + a working example (this slice's `_auth_harness`) is the primary mitigation.
+
+---
+
+### STREAMLIT-APPTEST-SESSIONSTATE-NO-GET (2026-04-23) — `AppTest.session_state` has no `.get()` method; attribute access routes to key lookup
+
+**Finding:** `streamlit.testing.v1.AppTest.session_state` is a `streamlit.runtime.state.session_state.SessionState` instance (or a close wrapper). It exposes `__getitem__` and `__contains__` but does **not** expose a `.get()` method. Calling `at.session_state.get(key)` routes through `SessionState.__getattr__` which interprets the attribute name as a session-state key and tries to look it up — i.e. `at.session_state.get("dashboard_authenticated")` literally tries to look up the key `"get"`, not the key `"dashboard_authenticated"`. The lookup of `"get"` fails and `AttributeError: get not found in session_state.` is raised.
+
+**Discovery:** Build Slice 2026-04-23-08 (Packet 2026-04-23-08, WBS APP-08) Revise Attempt 2. Three AppTest-based tests in `tests/test_dashboard_auth.py` used `at.session_state.get(AUTH_SESSION_KEY)` as a convenient "exists-and-is-truthy?" check. All three failed at that line.
+
+**Cost:** 1 of the 3 revise attempts in Slice 8.
+
+**Workaround (applies now):** Use the `in` + `__getitem__` idiom explicitly:
+
+```python
+# Instead of: at.session_state.get(KEY)
+# Use:
+if KEY in at.session_state and at.session_state[KEY]:
+    ...
+
+# Or for a presence-only check:
+assert KEY in at.session_state
+```
+
+All three AppTest tests in `tests/test_dashboard_auth.py` now use this idiom with inline comments explaining why.
+
+**Root cause:** `SessionState` overrides `__getattr__` to support the `st.session_state.some_key` access pattern that Streamlit apps use idiomatically. The override treats every attribute access as a key lookup, which collides with dict-like methods (`.get`, `.setdefault`, `.keys`, `.items`, etc.). Streamlit's public documentation for `st.session_state` names `__getitem__` and `__contains__` as the supported operations; `.get` and friends are not documented as supported.
+
+This is *by design* in Streamlit rather than a bug, but the failure mode (an `AttributeError` for `get` that looks like a naive dict would support it) is confusing.
+
+**Countermeasure options:**
+
+1. **Test-writing guidance in `CLAUDE.md` / `WARP.md` / test-writing README.** Paired with the `STREAMLIT-APPTEST-ASCII-ONLY-HARNESS` guidance above as a two-line "AppTest gotchas" section. Lowest-effort.
+2. **Helper function.** Add `tests/_streamlit_helpers.py` with a `session_get(at, key, default=None)` shim that does the `in` + `[]` dance, and recommend it in the guidance. Might be overengineering for a single slice's worth of traps.
+
+**Owning slice / skill:** Same as `STREAMLIT-APPTEST-ASCII-ONLY-HARNESS` — a small docs-only slice or a passing comment in the next AppTest-using slice.
+
+**Priority:** 🟢 Low — workaround is trivial; the surprise is a one-time tax per developer learning AppTest.
+
+---
+
 ### INFRA-NAMESPACE-SHADOWING (2026-04-23) — `app.infra/__init__.py` re-export shadows the `app.infra.settings` submodule attribute
 
 **Finding:** During Build Slice 2026-04-23-07 (Packet 2026-04-23-07, WBS APP-03 / TST-02), the new middleware test fixture used the idiom `import app.infra.settings as settings_module; settings = settings_module.settings` to obtain the Settings singleton for test-time override. This raised `AttributeError: 'Settings' object has no attribute 'settings'` on every test's setup, consuming **2 of the 3 available revise attempts** before the real root cause was identified.
